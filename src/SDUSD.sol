@@ -23,11 +23,12 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   SDUSD_DAO i_sdusdDaoContract;
 
   // ERC-20 variables
-  address public immutable i_owner;
-  uint256 public immutable i_sdusdTokenId; // should be 0
-  uint256 public s_ethCollateralRatio; // if 4, then if there's $4,000 worth of ETH, then 1,000 SDUSD can be minted
-  uint256 public s_degredationThreshold; // collateralRatio at which redemptions begin to degrade (1.5)
-  uint256 public sdusdMinted;
+  address private immutable i_owner;
+  uint256 private immutable i_sdusdTokenId; // should be 0
+  uint256 private s_ethCollateralRatio; // if 4, then if there's $4,000 worth of ETH, then 1,000 SDUSD can be minted
+  uint256 private s_degredationThreshold; // collateralRatio at which redemptions begin to degrade (1.5)
+  uint256 private s_sdusdMinted;
+  uint256 private constant DECIMALS = 18; // sdusd has 18 decimals
 
   // Chainlink variables
   // LINK Token address on the Ethereum mainnet
@@ -65,63 +66,52 @@ contract SDUSD is ERC1155, VRFConsumerBase {
 
   function mintSDUSD() external payable { // msg.value
 
-    // Get the latest ETH price from the Chainlink oracle
-    uint256 ethPrice = getPrice();
-    if (ethPrice <= 0) {
-      revert SDUSD__InvalidEthPrice();
-    }
-
-    uint256 amount = msg.value * ethPrice;
-
     // Calculate the maximum amount of SDUSD that can be minted based on the collateral ratio
-    int256 maxMintable = calculateMaxMintable(ethPrice, msg.value);
-    if (uint256(maxMintable) < amount) {
+    (int256 maxMintable, uint256 ethPrice) = calculateMaxMintable();
+    if (uint256(maxMintable) < msg.value) {
       revert SDUSD__ExceedsMaxAmountMintable();
     }
 
-    sdusdMinted += amount;
+    uint256 amount = ethPrice * msg.value / 1e18;
+
+    s_sdusdMinted += amount;
     _mint(msg.sender, i_sdusdTokenId, amount, "");
-
   }
-
-  /**
-  * @notice this function calculates the maximum amount of SDUSD currently mintable
-  * @dev Does the msg.value get added to address(this).balance BEFORE this funtion is called? I am assuming in my equation below that it does not
-  * @dev this is the following equation reworked to equal newAmt:
-  * (ethPrice * (address(this).balance + msg.value)) / (sdusdMinted + maxNewAmount) = ethCollateralRatio
-  * Imagine the following numbers to see why this works
-  * (4000 * (0 + 1)) / (0 + maxNewAmount) = 4
-  * maxNewAmount is 1,000
-  * @param _ethPrice currentEthPrice, from Chainlink
-  * @param _msgValue amount of ETH being added to contract by this minting
-  * @return maxMintable 
-  */
-  function calculateMaxMintable(uint256 _ethPrice, uint256 _msgValue) internal view returns (int256) {
-    return int256(((_ethPrice * (address(this).balance + _msgValue)) / s_ethCollateralRatio) - sdusdMinted);
-  }
-
 
 
   /**
   * @notice this function calculates the maximum amount of SDUSD mintable (including a new deposit)
   * @dev essentially this works in the following way
-  * You take the current balance in USD and add the additional max amount a user would add in USD, we'll call this X: (address(this).balance * ethPrice) + maxAmountInUSD
-  * Then you take the current amount of SDUSD minted and add the max amount a user would add in USD, we'll call this Y: sdusdMinted + maxAmountInUSD
-  * Then you have X / Y = ethCollateralRatio. This is the maximum amount of ETH a user can exchange for SDUSD at current prices
-  * When reconfigured to solve for maxAmountInUSD, the equation is below. Then divide the entire thing by the ETH price to get the max amount of ETH that can currently be exchanged for SDUSD
-  * @dev consider the following values, plug them into the formula and see what you get:
-  * ethCollateralRatio: 4
-  * ethPrice: $1,000
-  * balance: 1 ETH
-  * sdusdMinted: 150
-  * The answer should be 0.13333 ETH or $133.33. Consider: $1,133.33 / ($133.33 + $150) = 4
+  * 
+  * Use the following variables:
+  * b: address(this).balance
+  * p: ethPrice * 1e10
+  * m: maxMintable (in ETH)
+  * u: sdusdMinted
+  * r: ethCollateralRatio
+  * 
+  * You take the current balance in USD (b * p) and add the additional max amount a user would add in USD (m * p)
+  * We'll factor out the `p`, divide by 1e18 and call this X: (p * (b + m)) / 1e18
+  * Then you take the current amount of SDUSD minted (u) and add the max amount a user would add in USD (m * p) / 1e18
+  * We'll call this Y: u + ((m * p) / 1e18)
+  * Then you have X / Y = ethCollateralRatio (r)
+  * When reconfigured to solve for maxAmountInUSD (m), the equation is below
+  * @dev  A simple equation for plugging in values is as follows: (p * (b + m)) / (u + (m * p)) = r
+  * Consider the following values, plug them into the formula and see what you get:
+  * ethCollateralRatio (r): 4
+  * ethPrice (p): $2,000
+  * balance (b): 4 ETH
+  * s_sdusdMinted (u): 0
+  * The answer should be 1.3333 ETH. Consider: ($2,000 * (4 + 1.33333)) / (0 + (1.33333 * $2,000)) = 4
   * @return maxMintable maximum amount mintable in ETH including a new deposit
   */
-  function viewMaxMintable() public view returns (int256) {
+  function calculateMaxMintable() public view returns (int256, uint256) {
     // Get the latest ETH price from the Chainlink oracle
     uint256 ethPrice = getPrice();
 
-    return int256(((s_ethCollateralRatio * sdusdMinted) - (address(this).balance * ethPrice)) / (1 - s_ethCollateralRatio) / ethPrice);
+    int256 maxAmountInEth = (int256(s_ethCollateralRatio * s_sdusdMinted * 1e18) - int256(ethPrice * address(this).balance)) / (int256(ethPrice) - int256(ethPrice * s_ethCollateralRatio));
+
+    return (maxAmountInEth, ethPrice);
 
   }
 
@@ -130,7 +120,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
    * @param _amount amount of SDUSD being redeemed
    */
   function redeemSDUSDForEth(uint256 _amount) external {
-    if (sdusdMinted < _amount) {
+    if (s_sdusdMinted < _amount) {
       revert SDUSD__WithdrawalAmountLargerThanSdusdSupply();
     }
 
@@ -142,7 +132,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
     }
 
     // Update balances and transfer ETH
-    sdusdMinted -= _amount;
+    s_sdusdMinted -= _amount;
     _burn(msg.sender, i_sdusdTokenId, _amount);
     payable(msg.sender).transfer(redemption);
   }
@@ -153,6 +143,11 @@ contract SDUSD is ERC1155, VRFConsumerBase {
    */
   function getPrice() internal view returns (uint256) {
     (, int256 ethPrice, , , ) = i_ethPriceFeed.latestRoundData();
+
+    if (ethPrice <= 0) {
+      revert SDUSD__InvalidEthPrice();
+    }
+
     return uint256(ethPrice * 1e10);
   }
 
@@ -166,17 +161,17 @@ contract SDUSD is ERC1155, VRFConsumerBase {
     // Get current ETH price
     uint256 ethPrice = getPrice();
 
-    // person has all sdusdMinted, so give them back all the ETH (this should rarely happen, but have to check this first because in this case it will result in division by 0 in an equation below, so we avoid that here)
-    if (_amount - sdusdMinted == 0) {
+    // person has all s_sdusdMinted, so give them back all the ETH (this should rarely happen, but have to check this first because in this case it will result in division by 0 in an equation below, so we avoid that here)
+    if (_amount - s_sdusdMinted == 0) {
       return _amount * 1e18 / ethPrice; // <- should equal address(this).balance in wei
     }
 
     // If collateral ratio is above the degredation threshold, there is no amount that can make the ending collateral ratio dip below the degredation threshold (see attached documents for proof)
     // Therefore, it can always be redeemed 1:1
-    // However, instead of doing the simpler: (uint256(ethPrice) * address(this).balance) / sdusdMinted <- startingCollateralRatio
+    // However, instead of doing the simpler: (uint256(ethPrice) * address(this).balance) / s_sdusdMinted <- startingCollateralRatio
     // We do the slightly more complex endingCollateralRatio, because if the startingCollateralRatio  < degredationThreshold, so we can use this number without having to do almost the exact same calculation
     // This is a design choice but in the long run would result in lower gas if the collateral ratio falls below the degredation threshold
-    uint256 endingCollateralRatio = ((uint256(ethPrice) * address(this).balance) - _amount) / (sdusdMinted - _amount);
+    uint256 endingCollateralRatio = ((uint256(ethPrice) * address(this).balance) - _amount) / (s_sdusdMinted - _amount);
 
     // if collateralRatio is above degredationThreshold, redemption can be 1:1
     if (endingCollateralRatio >= s_degredationThreshold) {
@@ -187,7 +182,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
     // a - _amount (this is the input to this equation)
     // c - endingCollateralRatio (we just calculated this above)
     // d - degredationThreshold (this is a global variable)
-    // u - sdusdMinted (this is a global variable)
+    // u - s_sdusdMinted (this is a global variable)
 
     // We are using the quadratic equation: redemptionRate = (-B ± sqrt(B^2 - 4AC)) / 2A
     // Here are the following variables and how they correspond to the variables listed above (see docs for full explanation):
@@ -196,7 +191,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
     // C: (u - a) * d
 
     // We'll define C separately, since it is more complex
-    uint256 quadraticC = (sdusdMinted - _amount) * s_degredationThreshold;
+    uint256 quadraticC = (s_sdusdMinted - _amount) * s_degredationThreshold;
 
     // We'll define the B^2 - 4AC value separately, since the number needs to be input into a separate sqrt function
     int256 quadraticSqrtValueBefore = int256((endingCollateralRatio * endingCollateralRatio) - (4 * _amount * quadraticC));
@@ -232,7 +227,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   function setEthCollateralRatio(uint256 _updatedNumber) internal {}
 
   function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
-    
+
   }
 
 
@@ -252,7 +247,32 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   }
 
 
+  // Getter functions
 
+  function getOwner() external view returns (address) {
+    return i_owner;
+  }
+
+  function getSdusdTokenId() external view returns (uint256) {
+    return i_sdusdTokenId;
+  }
+
+  function getEthCollateralRatio() external view returns (uint256) {
+    return s_ethCollateralRatio;
+  }
+
+  function getDegredationThreshold() external view returns (uint256) {
+    return s_degredationThreshold;
+  }
+
+  function getSdusdMinted() external view returns (uint256) {
+    return s_sdusdMinted;
+  }
+
+
+  fallback() external {}
+
+  receive() external payable {}
 
 
 
@@ -266,9 +286,9 @@ contract SDUSD is ERC1155, VRFConsumerBase {
 //   }
 
 //   function redeemSDUSD(uint256 amount) external onlyOwner {
-//     require(amount <= sdusdMinted, "Not enough SDUSD minted");
+//     require(amount <= s_sdusdMinted, "Not enough SDUSD minted");
 
-//     sdusdMinted -= amount;
+//     s_sdusdMinted -= amount;
 //     _burn(msg.sender, amount);
 
 //     // Get the latest ETH price from the Chainlink oracle
@@ -293,7 +313,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
 //     require(ethEquivalent <= ethCollateralRatio, "Not enough collateral");
 
 //     // Update balances and transfer ETH
-//     sdusdMinted -= sdusdAmount;
+//     s_sdusdMinted -= sdusdAmount;
 //     _burn(msg.sender, sdusdAmount);
 //     payable(msg.sender).transfer(ethEquivalent);
 //   }
