@@ -1,16 +1,16 @@
-pragma solidity ^0.8.0;
+// SPDX-License-Identifier: MIT
 
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Receiver.sol";
+pragma solidity ^0.8.18;
+
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
 
 contract SDUSD_NFT is IERC1155, Ownable { // may need certain ERC1155 contract extensions
-  using Counters for Counters.Counter;
-  Counters.Counter private _tokenIdCounter;
-  Counters.Counter private _specialTokenIdCounter; // should start at 10 (or however many tiers there are, since these will be listed after the tiers)
+
+  uint256 private _tokenIdCounter;
+  uint256 private _specialTokenIdCounter; // should start at 10 (or however many tiers there are, since these will be listed after the tiers)
 
   struct Tier {
     string metadataURI;

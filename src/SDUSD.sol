@@ -1,42 +1,44 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
 
 // import sister contracts
 import { SDUSD_DAO } from "./DAO.sol";
-import { SDUSD_NFT } from "./NFTs.sol";
+// import { SDUSD_NFT } from "./NFTs.sol";
 
-error NotOwner();
-error InvalidEthPrice();
-error ExceedsMaxAmountMintable();
-error WithdrawalAmountLargerThanSdusdSupply();
-error RedemptionRateCalculationFailed();
+error SDUSD__NotOwner();
+error SDUSD__InvalidEthPrice();
+error SDUSD__ExceedsMaxAmountMintable();
+error SDUSD__WithdrawalAmountLargerThanSdusdSupply();
+error SDUSD__RedemptionRateCalculationFailed();
+error SDUSD__NoSolutionForR();
 
 contract SDUSD is ERC1155, VRFConsumerBase {
 
+  // Other contract variables
+  SDUSD_DAO i_sdusdDaoContract;
+
   // ERC-20 variables
   address public immutable i_owner;
-  uint256 public ethCollateralRatio; // if 4, then if there's $4,000 worth of ETH, then 1,000 SDUSD can be minted
-  uint256 public degredationThreshold; // collateralRatio at which redemptions begin to degrade (1.5)
+  uint256 public immutable i_sdusdTokenId; // should be 0
+  uint256 public s_ethCollateralRatio; // if 4, then if there's $4,000 worth of ETH, then 1,000 SDUSD can be minted
+  uint256 public s_degredationThreshold; // collateralRatio at which redemptions begin to degrade (1.5)
   uint256 public sdusdMinted;
 
   // Chainlink variables
   // LINK Token address on the Ethereum mainnet
-  address private LINK_TOKEN_ADDRESS = 0x514910771AF9Ca656af840dff83E8264EcF986CA;    
+  address private immutable i_linkTokenAddress; // = 0x514910771AF9Ca656af840dff83E8264EcF986CA;    
   // Chainlink VRF Coordinator on the Ethereum mainnet
-  address private VRF_COORDINATOR = 0xcdd39647D717da55d0d7c77fe466f051156fd0a1;
-  address private VRF_COORDINATOR = 0xcdd39647D717da55d0d7c77fe466f051156fd0a1;
-  bytes32 internal keyHash;
-  uint256 internal fee;
-  AggregatorV3Interface internal ethPriceFeed;
+  address private immutable i_vrfCoordinator;
+  bytes32 internal immutable i_keyHash;
+  uint256 internal immutable i_fee;
+  AggregatorV3Interface internal immutable i_ethPriceFeed;
 
   // NFT contract
-  IERC721 public nftContract;
   uint256[] tiers; // index numbers ending for each tier, something like [99, 499, 999, 4999, 9999, 49999, ...]
 
   // NFT variables
@@ -46,38 +48,39 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   uint256 public totalVotingShares;
   mapping(address => uint256) public votingShares; // untransferrable voting shares for people who buy an NFT
 
-  constructor(address _ethPriceOracle, uint256 _ethCollateralRatio) ERC1155("Simple Decentralized USD", "SDUSD") VRFConsumerBase (VRF_COORDINATOR, LINK_TOKEN_ADDRESS) {
+  constructor(address _sdusdDaoAddress, address _ethPriceFeed, uint256 _sdusdTokenId, address _vrfCoordinator, address _linkTokenAddress, uint256 _ethCollateralRatio, uint256 _degredationThreshold, bytes32 _keyHash) ERC1155("SDUSD") VRFConsumerBase (_vrfCoordinator, _linkTokenAddress) {
+    
     i_owner = msg.sender;
-    ethCollateralRatio = _ethCollateralRatio;
-    ethPriceFeed = AggregatorV3Interface(_ethPriceOracle);
-    keyHash = 0x...; // Replace with the appropriate key hash
-    fee = 0.1 * 10**18; // 0.1 LINK (10^18 Wei)
+    i_sdusdTokenId = _sdusdTokenId;
+    i_vrfCoordinator = _vrfCoordinator;
+    i_sdusdDaoContract = SDUSD_DAO(_sdusdDaoAddress);
+    i_keyHash = _keyHash;
+    i_linkTokenAddress = _linkTokenAddress;
+    i_ethPriceFeed = AggregatorV3Interface(_ethPriceFeed);
+    i_fee = 0.1 * 10**18; // 0.1 LINK (10^18 Wei)
+
+    s_degredationThreshold = _degredationThreshold;
+    s_ethCollateralRatio = _ethCollateralRatio;
   }
 
-  modifier onlyOwner() {
-    if (msg.sender != i_owner) {
-      revert NotOwner();
-    }
-    _;
-  }
-
-  function mintSDUSD() external { // msg.value
+  function mintSDUSD() external payable { // msg.value
 
     // Get the latest ETH price from the Chainlink oracle
-    int256 ethPrice = getPrice();
+    uint256 ethPrice = getPrice();
     if (ethPrice <= 0) {
-      revert InvalidEthPrice();
+      revert SDUSD__InvalidEthPrice();
     }
 
     uint256 amount = msg.value * ethPrice;
 
     // Calculate the maximum amount of SDUSD that can be minted based on the collateral ratio
-    if (calculateMaxMintable(ethPrice, msg.value) < amount) {
-      revert ExceedsMaxAmountMintable();
+    int256 maxMintable = calculateMaxMintable(ethPrice, msg.value);
+    if (uint256(maxMintable) < amount) {
+      revert SDUSD__ExceedsMaxAmountMintable();
     }
 
     sdusdMinted += amount;
-    _mint(msg.sender, amount);
+    _mint(msg.sender, i_sdusdTokenId, amount, "");
 
   }
 
@@ -89,12 +92,12 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   * Imagine the following numbers to see why this works
   * (4000 * (0 + 1)) / (0 + maxNewAmount) = 4
   * maxNewAmount is 1,000
-  * @param ethPrice currentEthPrice, from Chainlink
-  * @param msgValue amount of ETH being added to contract by this minting
+  * @param _ethPrice currentEthPrice, from Chainlink
+  * @param _msgValue amount of ETH being added to contract by this minting
   * @return maxMintable 
   */
-  function calculateMaxMintable(uint256 _ethPrice, uint256 _msgValue) internal returns (int256) {
-    return ((_ethPrice * (address(this).balance + _msgValue)) / ethCollateralRatio) - sdusdMinted;
+  function calculateMaxMintable(uint256 _ethPrice, uint256 _msgValue) internal view returns (int256) {
+    return int256(((_ethPrice * (address(this).balance + _msgValue)) / s_ethCollateralRatio) - sdusdMinted);
   }
 
 
@@ -116,9 +119,9 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   */
   function viewMaxMintable() public view returns (int256) {
     // Get the latest ETH price from the Chainlink oracle
-    int256 ethPrice = getPrice();
+    uint256 ethPrice = getPrice();
 
-    return ((ethCollateralRatio * sdusdMinted) - (address(this).balance * ethPrice)) / (1 - ethCollateralRatio) / ethPrice;
+    return int256(((s_ethCollateralRatio * sdusdMinted) - (address(this).balance * ethPrice)) / (1 - s_ethCollateralRatio) / ethPrice);
 
   }
 
@@ -128,19 +131,19 @@ contract SDUSD is ERC1155, VRFConsumerBase {
    */
   function redeemSDUSDForEth(uint256 _amount) external {
     if (sdusdMinted < _amount) {
-      revert WithdrawalAmountLargerThanSdusdSupply();
+      revert SDUSD__WithdrawalAmountLargerThanSdusdSupply();
     }
 
     // Calculate the redemption ratio
     uint256 redemption = calculateRedemption(_amount);
 
     if (redemption > address(this).balance) {
-      revert WithdrawalAmountLargerThanSdusdSupply();
+      revert SDUSD__WithdrawalAmountLargerThanSdusdSupply();
     }
 
     // Update balances and transfer ETH
     sdusdMinted -= _amount;
-    _burn(msg.sender, _amount);
+    _burn(msg.sender, i_sdusdTokenId, _amount);
     payable(msg.sender).transfer(redemption);
   }
 
@@ -148,20 +151,20 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   /**
    * @dev ethPrice has 8 decimal places, so we add 10 zeros to it to allow it to match msg.value, which is expressed in wei
    */
-  function getPrice() internal returns (uint256) {
-    (, int256 ethPrice, , , ) = ethPriceFeed.latestRoundData();
+  function getPrice() internal view returns (uint256) {
+    (, int256 ethPrice, , , ) = i_ethPriceFeed.latestRoundData();
     return uint256(ethPrice * 1e10);
   }
 
 
   // returns amountUserGetsInWei
   // _amount is amount of sdusd
-  function calculateRedemption(uint256 _amount) internal returns (uint256) {
+  function calculateRedemption(uint256 _amount) internal view returns (uint256) {
 
     // Check that current collateralization rate is above degredationThreshold
 
     // Get current ETH price
-    int256 ethPrice = getPrice();
+    uint256 ethPrice = getPrice();
 
     // person has all sdusdMinted, so give them back all the ETH (this should rarely happen, but have to check this first because in this case it will result in division by 0 in an equation below, so we avoid that here)
     if (_amount - sdusdMinted == 0) {
@@ -176,7 +179,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
     uint256 endingCollateralRatio = ((uint256(ethPrice) * address(this).balance) - _amount) / (sdusdMinted - _amount);
 
     // if collateralRatio is above degredationThreshold, redemption can be 1:1
-    if (endingCollateralRatio >= degredationThreshold) {
+    if (endingCollateralRatio >= s_degredationThreshold) {
       return _amount * 1e18 / ethPrice; // should be wei amount
     }
 
@@ -193,25 +196,33 @@ contract SDUSD is ERC1155, VRFConsumerBase {
     // C: (u - a) * d
 
     // We'll define C separately, since it is more complex
-    uint256 quadraticC = (sdusdMinted - _amount) * degredationThreshold;
+    uint256 quadraticC = (sdusdMinted - _amount) * s_degredationThreshold;
 
     // We'll define the B^2 - 4AC value separately, since the number needs to be input into a separate sqrt function
-    uint256 quadraticSqrtValueBefore = (endingCollateralRatio * endingCollateralRatio) - (4 * _amount * quadraticC);
-    uint256 quadraticSqrtValueAfter = sqrt(quadraticSqrtValueBefore);
+    int256 quadraticSqrtValueBefore = int256((endingCollateralRatio * endingCollateralRatio) - (4 * _amount * quadraticC));
+
+    // Sanity check: sqrt value is negative, meaning it has no real solution. This should never fire.
+    if (quadraticSqrtValueBefore < 0) {
+      revert SDUSD__NoSolutionForR();
+    }
+    
+    
+    uint256 quadraticSqrtValueAfter = sqrt(uint256(quadraticSqrtValueBefore));
 
     
     // The quadratic equation uses ±, so we calculate the equation twice, once using the + and once using the -
     // NOTE: It is possible that the + version will always be positive and the - version will always be negative, making the two caluclations redundant
     // Nevertheless, we will do the two calculations and take the larger of the two numbers between 0 and 1
-    int256 redemptionRatePlus = (-endingCollateralRatio + quadraticSqrtValueAfter) / (2 * _amount);
-    int256 redemptionRateMinus = (-endingCollateralRatio - quadraticSqrtValueAfter) / (2 * _amount);
+    // We also have to cast everything to an int256 in case we deal with negative numbers
+    int256 redemptionRatePlus = (int256(endingCollateralRatio) + int256(quadraticSqrtValueAfter)) / (2 * int256(_amount));
+    int256 redemptionRateMinus = (int256(endingCollateralRatio) - int256(quadraticSqrtValueAfter)) / (2 * int256(_amount));
 
     // calculate redemption rate, should be between 0 and 1
-    uint256 redemptionRate = redemptionRatePlus > redemptionRateMinus && redemptionRatePlus > 0 && redemptionRatePlus <= 1 ? redemptionRatePlus : redemptionRateMinus > 0 && redemptionRateMinus <= 1 ? redemptionRateMinus : -1;
+    int256 redemptionRate = redemptionRatePlus > redemptionRateMinus && redemptionRatePlus > 0 && redemptionRatePlus <= 1 ? redemptionRatePlus : redemptionRateMinus > 0 && redemptionRateMinus <= 1 ? redemptionRateMinus : -1;
     
     // Sanity check. This should never fire.
     if (redemptionRate == -1) {
-      revert RedemptionRateCalculationFailed();
+      revert SDUSD__RedemptionRateCalculationFailed();
     }
 
     return _amount * 1e18 * uint256(redemptionRate) / ethPrice; // should be wei amount
@@ -219,6 +230,10 @@ contract SDUSD is ERC1155, VRFConsumerBase {
 
   // can only be changed by a DAO vote
   function setEthCollateralRatio(uint256 _updatedNumber) internal {}
+
+  function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
+    
+  }
 
 
   // calculate the sqrt for the calculateRedemption function
@@ -235,6 +250,10 @@ contract SDUSD is ERC1155, VRFConsumerBase {
       z = 1;
     }
   }
+
+
+
+
 
 
 //   // Function to buy NFTs and contribute ETH to the collateral

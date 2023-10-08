@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 
-contract SDUSD_DAO is ERC20 {
+contract SDUSD_DAO {
 
   // ERC-20 variables
   // uint256 public ethTargetCollateralRatio;
@@ -18,7 +18,7 @@ contract SDUSD_DAO is ERC20 {
   uint256 public constant maxDurationOfProposal = 10; // proposals can not be longer than 10 days
 
   // Changeable variables
-  uint256[4] public changeableVariables = [4, 1.5, 50, 67]; // [ethCollateralRatio, degredationThreshold, quorum, passingPercentage]
+  uint256[4] public changeableVariables = [4, 2, 50, 67]; // [ethCollateralRatio, degredationThreshold, quorum, passingPercentage]
   uint256 public proposalCounter = 0;
   uint256 public totalVotes;
   uint256 public quorum = 50; // percent of voting power that needs to vote for a change to apply
@@ -57,27 +57,27 @@ contract SDUSD_DAO is ERC20 {
 
   function finalizeProposal(uint256 _proposalNumber) public {
     // make sure durationOfProposal has passed (this math and number usage is not currently correct as of 9/12/23)
-    check(proposalNumberToData[_proposalNumber].proposalStart + proposalNumberToData[_proposalNumber].durationOfProposal >= block.timestamp, "Proposal is still open");
+    require(proposalNumberToData[_proposalNumber].proposalStart + proposalNumberToData[_proposalNumber].durationOfProposal >= block.timestamp, "Proposal is still open");
 
     // make sure it's reached quorum
-    check(proposalNumberToData[_proposalNumber].quorum > (proposalNumberToData[_proposalNumber].votesFor + proposalNumberToData[_proposalNumber].votesAgainst) / totalVotes, "Proposal did not reach quorum");
+    require(proposalNumberToData[_proposalNumber].quorum > (proposalNumberToData[_proposalNumber].votesFor + proposalNumberToData[_proposalNumber].votesAgainst) / totalVotes, "Proposal did not reach quorum");
 
     // if passed, make changes
     if (proposalNumberToData[_proposalNumber].votesFor / (proposalNumberToData[_proposalNumber].votesFor + proposalNumberToData[_proposalNumber].votesAgainst) > passingPercentage) {
       // make sure finaizedByCommunity is false (don't need to re-finalize a Proposal that's already been finalized)
-      check(proposalNumberToData[_proposalNumber].finalizedByCommunity != true, "Proposal has already been finalized");
+      require(proposalNumberToData[_proposalNumber].finalizedByCommunity != true, "Proposal has already been finalized");
 
       // make changes
       uint256 variableToChange = proposalNumberToData[_proposalNumber].variableToChange;
       changeableVariables[variableToChange] = proposalNumberToData[_proposalNumber].changeTo;
 
       // and finalize proposal
-      proposalNumberToData[_proposalNumber].finalized = true;
+      proposalNumberToData[_proposalNumber].finalizedByCommunity = true;
 
     }
     // else, finalizeProposal and end
     else {
-      proposalNumberToData[_proposalNumber].finalized = true;
+      proposalNumberToData[_proposalNumber].finalizedByCommunity = true;
     }
 
     emit ProposalFinalized(msg.sender, proposalNumberToData[_proposalNumber]);
@@ -91,7 +91,7 @@ contract SDUSD_DAO is ERC20 {
    * @dev this probably does not currently work as of 9/12/23 (Proposal details will not be returned)
    * @param _proposalNumber which proposal to get the details for
    */
-  function viewProposal(uint256 _proposalNumber) external view {
+  function viewProposal(uint256 _proposalNumber) external view returns(Proposal memory) {
     return proposalNumberToData[_proposalNumber];
   }
 }
