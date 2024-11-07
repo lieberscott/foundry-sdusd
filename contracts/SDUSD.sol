@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+// import "@openzeppelin/contracts/access/Ownable.sol";
+import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBase.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 
 // import sister contracts
-import { SDUSD_DAO } from "./DAO.sol";
+import { SDUSDAO } from "./SDUSDAO.sol";
 // import { SDUSD_NFT } from "./NFTs.sol";
 
 error SDUSD__NotOwner();
@@ -17,14 +19,13 @@ error SDUSD__WithdrawalAmountLargerThanSdusdSupply();
 error SDUSD__RedemptionRateCalculationFailed();
 error SDUSD__NoSolutionForR();
 
-contract SDUSD is ERC1155, VRFConsumerBase {
+contract SDUSD is ERC20, ReentrancyGuard, VRFConsumerBase {
 
   // Other contract variables
-  SDUSD_DAO i_sdusdDaoContract;
+  SDUSDAO i_sdusdDaoContract;
 
   // ERC-20 variables
   address private immutable i_owner;
-  uint256 private immutable i_sdusdTokenId; // should be 0
   uint256 private s_ethCollateralRatio; // if 4, then if there's $4,000 worth of ETH, then 1,000 SDUSD can be minted
   uint256 private s_degredationThreshold; // collateralRatio at which redemptions begin to degrade (1.5)
   uint256 private s_sdusdMinted;
@@ -49,12 +50,14 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   uint256 public totalVotingShares;
   mapping(address => uint256) public votingShares; // untransferrable voting shares for people who buy an NFT
 
-  constructor(address _sdusdDaoAddress, address _ethPriceFeed, uint256 _sdusdTokenId, address _vrfCoordinator, address _linkTokenAddress, uint256 _ethCollateralRatio, uint256 _degredationThreshold, bytes32 _keyHash) ERC1155("SDUSD") VRFConsumerBase (_vrfCoordinator, _linkTokenAddress) {
+  // Events
+  event sdusdMinted(address indexed _minter, uint256 indexed _amount);
+
+  constructor(SDUSDAO _sdusdDaoAddress, address _ethPriceFeed, address _vrfCoordinator, address _linkTokenAddress, uint256 _ethCollateralRatio, uint256 _degredationThreshold, bytes32 _keyHash) ERC20("Simple Decentralized USD", "SDUSD") VRFConsumerBase (_vrfCoordinator, _linkTokenAddress) {
     
     i_owner = msg.sender;
-    i_sdusdTokenId = _sdusdTokenId;
     i_vrfCoordinator = _vrfCoordinator;
-    i_sdusdDaoContract = SDUSD_DAO(_sdusdDaoAddress);
+    i_sdusdDaoContract = SDUSDAO(_sdusdDaoAddress);
     i_keyHash = _keyHash;
     i_linkTokenAddress = _linkTokenAddress;
     i_ethPriceFeed = AggregatorV3Interface(_ethPriceFeed);
@@ -64,7 +67,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
     s_ethCollateralRatio = _ethCollateralRatio;
   }
 
-  function mintSDUSD() external payable { // msg.value
+  function mintSDUSD() external payable nonReentrant { // msg.value
 
     // Calculate the maximum amount of SDUSD that can be minted based on the collateral ratio
     (int256 maxMintable, uint256 ethPrice) = calculateMaxMintable();
@@ -75,7 +78,8 @@ contract SDUSD is ERC1155, VRFConsumerBase {
     uint256 amount = ethPrice * msg.value / 1e18;
 
     s_sdusdMinted += amount;
-    _mint(msg.sender, i_sdusdTokenId, amount, "");
+    _mint(msg.sender, amount);
+    emit sdusdMinted(msg.sender, amount);
   }
 
 
@@ -104,6 +108,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   * s_sdusdMinted (u): 0
   * The answer should be 1.3333 ETH. Consider: ($2,000 * (4 + 1.33333)) / (0 + (1.33333 * $2,000)) = 4
   * @return maxMintable maximum amount mintable in ETH including a new deposit
+  * @return ethPrice ethPrice with 8 decimal places (as implemented by Chainlink)
   */
   function calculateMaxMintable() public view returns (int256, uint256) {
     // Get the latest ETH price from the Chainlink oracle
@@ -133,7 +138,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
 
     // Update balances and transfer ETH
     s_sdusdMinted -= _amount;
-    _burn(msg.sender, i_sdusdTokenId, _amount);
+    _burn(msg.sender, _amount);
     payable(msg.sender).transfer(redemption);
   }
 
@@ -161,7 +166,7 @@ contract SDUSD is ERC1155, VRFConsumerBase {
     // Get current ETH price
     uint256 ethPrice = getPrice();
 
-    // person has all s_sdusdMinted, so give them back all the ETH (this should rarely happen, but have to check this first because in this case it will result in division by 0 in an equation below, so we avoid that here)
+    // person has all s_sdusdMinted, so give them back all the ETH (this should rarely or maybe never happen, but have to check this first because in this case it will result in division by 0 in an equation below, so we avoid that here)
     if (_amount - s_sdusdMinted == 0) {
       return _amount * 1e18 / ethPrice; // <- should equal address(this).balance in wei
     }
@@ -247,14 +252,17 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   }
 
 
+  function getConversionRate(uint256 _ethAmount) internal view returns (uint256) {
+    uint256 ethPrice = getPrice();
+    uint256 ethAmountInUsd = (ethPrice * _ethAmount) / 1e18;
+    return ethAmountInUsd;
+  }
+
+
   // Getter functions
 
   function getOwner() external view returns (address) {
     return i_owner;
-  }
-
-  function getSdusdTokenId() external view returns (uint256) {
-    return i_sdusdTokenId;
   }
 
   function getEthCollateralRatio() external view returns (uint256) {
@@ -273,68 +281,4 @@ contract SDUSD is ERC1155, VRFConsumerBase {
   fallback() external {}
 
   receive() external payable {}
-
-
-
-//   // Function to buy NFTs and contribute ETH to the collateral
-//   function buyNFTAndContributeETH(uint256 tokenId) external payable {
-//     require(nftContract.ownerOf(tokenId) != address(0), "Invalid NFT");
-//     require(msg.value > 0, "Must send ETH");
-
-//     // Transfer NFT to the buyer
-//     nftContract.transferFrom(owner(), msg.sender, tokenId);
-//   }
-
-//   function redeemSDUSD(uint256 amount) external onlyOwner {
-//     require(amount <= s_sdusdMinted, "Not enough SDUSD minted");
-
-//     s_sdusdMinted -= amount;
-//     _burn(msg.sender, amount);
-
-//     // Get the latest ETH price from the Chainlink oracle
-//     (, int256 ethPrice, , , ) = ethPriceFeed.latestRoundData();
-//     require(ethPrice > 0, "Invalid ETH price");
-
-//     // Update SDUSD price based on new ETH price
-//     uint256 sdusdPrice = uint256(ethPrice); // You can use a more sophisticated calculation here
-//     _setSDUSDPrice(sdusdPrice);
-//   }
-
-//   function setEthCollateral(uint256 amount) external onlyOwner {
-//     ethCollateralRatio = amount;
-//   }
-
-//   function exchangeSDUSDForETH(uint256 sdusdAmount) external {
-//     require(sdusdAmount > 0, "Amount must be greater than 0");
-
-//     // Calculate the equivalent amount of ETH based on the collateral ratio
-//     uint256 ethEquivalent = sdusdAmount * 100 / ethCollateralRatio;
-
-//     require(ethEquivalent <= ethCollateralRatio, "Not enough collateral");
-
-//     // Update balances and transfer ETH
-//     s_sdusdMinted -= sdusdAmount;
-//     _burn(msg.sender, sdusdAmount);
-//     payable(msg.sender).transfer(ethEquivalent);
-//   }
-
-//   function redeemETH(uint256 ethAmount) external {
-//     // ...
-
-//     // Get the latest ETH price from the Chainlink oracle
-//     (, int256 ethPrice, , , ) = ethPriceFeed.latestRoundData();
-//     require(ethPrice > 0, "Invalid ETH price");
-
-//     // Update SDUSD price based on new ETH price
-//     uint256 sdusdPrice = uint256(ethPrice); // You can use a more sophisticated calculation here
-//     _setSDUSDPrice(sdusdPrice);
-
-//     // ...
-//   }
-
-//   function _setSDUSDPrice(uint256 price) internal {
-//     // Set the new SDUSD price
-//     // You can use a mapping or storage variable to store the price
-//     // sdusdPrice = price;
-//   }
 }
