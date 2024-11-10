@@ -22,7 +22,12 @@ contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 cont
 
   address sdusdTokenAddress;
 
-  constructor(string memory _baseTokenURI, address _sdusdTokenAddress, string memory _nftName, string memory _nftSymbol)
+  constructor(
+    string memory _baseTokenURI,
+    address _sdusdTokenAddress,
+    string memory _nftName,
+    string memory _nftSymbol
+  )
     ERC721(_nftName, _nftSymbol)
     EIP712(_nftName, "1")
   {

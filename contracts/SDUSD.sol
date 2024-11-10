@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-// import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-import "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBase.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 
 // import sister contracts
-import { SDUSDAO } from "./SDUSDAO.sol";
 // import { SDUSD_NFT } from "./NFTs.sol";
 
 error SDUSD__NotOwner();
@@ -19,10 +18,7 @@ error SDUSD__WithdrawalAmountLargerThanSdusdSupply();
 error SDUSD__RedemptionRateCalculationFailed();
 error SDUSD__NoSolutionForR();
 
-contract SDUSD is ERC20, ReentrancyGuard, VRFConsumerBase {
-
-  // Other contract variables
-  SDUSDAO i_sdusdDaoContract;
+contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard {
 
   // ERC-20 variables
   address private immutable i_owner;
@@ -33,10 +29,6 @@ contract SDUSD is ERC20, ReentrancyGuard, VRFConsumerBase {
 
   // Chainlink variables
   // LINK Token address on the Ethereum mainnet
-  address private immutable i_linkTokenAddress; // = 0x514910771AF9Ca656af840dff83E8264EcF986CA;    
-  // Chainlink VRF Coordinator on the Ethereum mainnet
-  address private immutable i_vrfCoordinator;
-  bytes32 internal immutable i_keyHash;
   uint256 internal immutable i_fee;
   AggregatorV3Interface internal immutable i_ethPriceFeed;
 
@@ -52,14 +44,17 @@ contract SDUSD is ERC20, ReentrancyGuard, VRFConsumerBase {
 
   // Events
   event sdusdMinted(address indexed _minter, uint256 indexed _amount);
+  event MintingThresholdChanged(uint256 newValue);
+	event DegredationThresholdChanged(uint256 newValue);
 
-  constructor(SDUSDAO _sdusdDaoAddress, address _ethPriceFeed, address _vrfCoordinator, address _linkTokenAddress, uint256 _ethCollateralRatio, uint256 _degredationThreshold, bytes32 _keyHash) ERC20("Simple Decentralized USD", "SDUSD") VRFConsumerBase (_vrfCoordinator, _linkTokenAddress) {
-    
+  constructor(
+    address _ethPriceFeed,
+    uint256 _ethCollateralRatio,
+    uint256 _degredationThreshold
+  )
+  ERC20("Simple Decentralized USD", "SDUSD")
+  ERC20Permit("Simple Decentralized USD") {    
     i_owner = msg.sender;
-    i_vrfCoordinator = _vrfCoordinator;
-    i_sdusdDaoContract = SDUSDAO(_sdusdDaoAddress);
-    i_keyHash = _keyHash;
-    i_linkTokenAddress = _linkTokenAddress;
     i_ethPriceFeed = AggregatorV3Interface(_ethPriceFeed);
     i_fee = 0.1 * 10**18; // 0.1 LINK (10^18 Wei)
 
@@ -231,10 +226,6 @@ contract SDUSD is ERC20, ReentrancyGuard, VRFConsumerBase {
   // can only be changed by a DAO vote
   function setEthCollateralRatio(uint256 _updatedNumber) internal {}
 
-  function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
-
-  }
-
 
   // calculate the sqrt for the calculateRedemption function
   // taken from Uniswap v2 code base: https://github.com/Uniswap/v2-core/blob/master/contracts/libraries/Math.sol
@@ -256,6 +247,22 @@ contract SDUSD is ERC20, ReentrancyGuard, VRFConsumerBase {
     uint256 ethPrice = getPrice();
     uint256 ethAmountInUsd = (ethPrice * _ethAmount) / 1e18;
     return ethAmountInUsd;
+  }
+
+  	// The following functions change the variables
+
+  // Changes the mintingThreshold
+	// Can only be called by owner (which will be the Timelock contract)
+  function changeMintingThreshold(uint256 newValue) public {
+    s_ethCollateralRatio = newValue;
+    emit MintingThresholdChanged(newValue);
+  }
+
+
+	// Changes degredationThreshold
+  function changeDegeadationThreshold(uint256 newValue) public {
+    s_degredationThreshold = newValue;
+    emit DegredationThresholdChanged(newValue);
   }
 
 
@@ -281,4 +288,22 @@ contract SDUSD is ERC20, ReentrancyGuard, VRFConsumerBase {
   fallback() external {}
 
   receive() external payable {}
+
+  // The following functions are overrides required by Solidity.
+
+    function _update(address from, address to, uint256 value)
+        internal
+        override(ERC20, ERC20Votes)
+    {
+        super._update(from, to, value);
+    }
+
+    function nonces(address owner)
+        public
+        view
+        override(ERC20Permit, Nonces)
+        returns (uint256)
+    {
+        return super.nonces(owner);
+    }
 }
