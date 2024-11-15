@@ -11,36 +11,22 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 // import sister contracts
 // import { SDUSD_NFT } from "./NFTs.sol";
 
-error SDUSD__NotOwner();
 error SDUSD__InvalidEthPrice();
 error SDUSD__ExceedsMaxAmountMintable();
 error SDUSD__WithdrawalAmountLargerThanSdusdSupply();
 error SDUSD__RedemptionRateCalculationFailed();
 error SDUSD__NoSolutionForR();
 
-contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard {
+contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
   // ERC-20 variables
-  address private immutable i_owner;
   uint256 private s_ethCollateralRatio; // if 4, then if there's $4,000 worth of ETH, then 1,000 SDUSD can be minted
   uint256 private s_degredationThreshold; // collateralRatio at which redemptions begin to degrade (1.5)
-  uint256 private s_sdusdMinted;
+  uint256 private s_sdusdMinted = 0;
   uint256 private constant DECIMALS = 18; // sdusd has 18 decimals
 
   // Chainlink variables
-  // LINK Token address on the Ethereum mainnet
-  uint256 internal immutable i_fee;
   AggregatorV3Interface internal immutable i_ethPriceFeed;
-
-  // NFT contract
-  uint256[] tiers; // index numbers ending for each tier, something like [99, 499, 999, 4999, 9999, 49999, ...]
-
-  // NFT variables
-  uint256 public nftIndex;
-  
-  // DAO Voting
-  uint256 public totalVotingShares;
-  mapping(address => uint256) public votingShares; // untransferrable voting shares for people who buy an NFT
 
   // Events
   event sdusdMinted(address indexed _minter, uint256 indexed _amount);
@@ -53,11 +39,9 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard {
     uint256 _degredationThreshold
   )
   ERC20("Simple Decentralized USD", "SDUSD")
-  ERC20Permit("Simple Decentralized USD") {    
-    i_owner = msg.sender;
+  ERC20Permit("Simple Decentralized USD")
+  Ownable(msg.sender) {    
     i_ethPriceFeed = AggregatorV3Interface(_ethPriceFeed);
-    i_fee = 0.1 * 10**18; // 0.1 LINK (10^18 Wei)
-
     s_degredationThreshold = _degredationThreshold;
     s_ethCollateralRatio = _ethCollateralRatio;
   }
@@ -75,44 +59,6 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard {
     s_sdusdMinted += amount;
     _mint(msg.sender, amount);
     emit sdusdMinted(msg.sender, amount);
-  }
-
-
-  /**
-  * @notice this function calculates the maximum amount of SDUSD mintable (including a new deposit)
-  * @dev essentially this works in the following way
-  * 
-  * Use the following variables:
-  * b: address(this).balance
-  * p: ethPrice * 1e10
-  * m: maxMintable (in ETH)
-  * u: sdusdMinted
-  * r: ethCollateralRatio
-  * 
-  * You take the current balance in USD (b * p) and add the additional max amount a user would add in USD (m * p)
-  * We'll factor out the `p`, divide by 1e18 and call this X: (p * (b + m)) / 1e18
-  * Then you take the current amount of SDUSD minted (u) and add the max amount a user would add in USD (m * p) / 1e18
-  * We'll call this Y: u + ((m * p) / 1e18)
-  * Then you have X / Y = ethCollateralRatio (r)
-  * When reconfigured to solve for maxAmountInUSD (m), the equation is below
-  * @dev  A simple equation for plugging in values is as follows: (p * (b + m)) / (u + (m * p)) = r
-  * Consider the following values, plug them into the formula and see what you get:
-  * ethCollateralRatio (r): 4
-  * ethPrice (p): $2,000
-  * balance (b): 4 ETH
-  * s_sdusdMinted (u): 0
-  * The answer should be 1.3333 ETH. Consider: ($2,000 * (4 + 1.33333)) / (0 + (1.33333 * $2,000)) = 4
-  * @return maxMintable maximum amount mintable in ETH including a new deposit
-  * @return ethPrice ethPrice with 8 decimal places (as implemented by Chainlink)
-  */
-  function calculateMaxMintable() public view returns (int256, uint256) {
-    // Get the latest ETH price from the Chainlink oracle
-    uint256 ethPrice = getPrice();
-
-    int256 maxAmountInEth = (int256(s_ethCollateralRatio * s_sdusdMinted * 1e18) - int256(ethPrice * address(this).balance)) / (int256(ethPrice) - int256(ethPrice * s_ethCollateralRatio));
-
-    return (maxAmountInEth, ethPrice);
-
   }
 
 
@@ -138,22 +84,8 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard {
   }
 
 
-  /**
-   * @dev ethPrice has 8 decimal places, so we add 10 zeros to it to allow it to match msg.value, which is expressed in wei
-   */
-  function getPrice() internal view returns (uint256) {
-    (, int256 ethPrice, , , ) = i_ethPriceFeed.latestRoundData();
-
-    if (ethPrice <= 0) {
-      revert SDUSD__InvalidEthPrice();
-    }
-
-    return uint256(ethPrice * 1e10);
-  }
-
-
   // returns amountUserGetsInWei
-  // _amount is amount of sdusd
+  // _amount is amount of sdusd being redeemed
   function calculateRedemption(uint256 _amount) internal view returns (uint256) {
 
     // Check that current collateralization rate is above degredationThreshold
@@ -223,8 +155,67 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard {
     return _amount * 1e18 * uint256(redemptionRate) / ethPrice; // should be wei amount
   }
 
-  // can only be changed by a DAO vote
-  function setEthCollateralRatio(uint256 _updatedNumber) internal {}
+
+
+  /** Utility functions */
+
+  function getConversionRate(uint256 _ethAmount) internal view returns (uint256) {
+    uint256 ethPrice = getPrice();
+    uint256 ethAmountInUsd = (ethPrice * _ethAmount) / 1e18;
+    return ethAmountInUsd;
+  }
+
+
+  /**
+  * @notice this function calculates the maximum amount of SDUSD mintable (including a new deposit)
+  * @dev essentially this works in the following way
+  * 
+  * Use the following variables:
+  * b: address(this).balance
+  * p: ethPrice * 1e10
+  * m: maxMintable (in ETH)
+  * u: sdusdMinted
+  * r: ethCollateralRatio
+  * 
+  * You take the current balance in USD (b * p) and add the additional max amount a user would add in USD (m * p)
+  * We'll factor out the `p`, divide by 1e18 and call this X: (p * (b + m)) / 1e18
+  * Then you take the current amount of SDUSD minted (u) and add the max amount a user would add in USD (m * p) / 1e18
+  * We'll call this Y: u + ((m * p) / 1e18)
+  * Then you have X / Y = ethCollateralRatio (r)
+  * When reconfigured to solve for maxAmountInUSD (m), the equation is below
+  * @dev  A simple equation for plugging in values is as follows: (p * (b + m)) / (u + (m * p)) = r
+  * Consider the following values, plug them into the formula and see what you get:
+  * ethCollateralRatio (r): 4
+  * ethPrice (p): $2,000
+  * balance (b): 4 ETH
+  * s_sdusdMinted (u): 0
+  * The answer should be 1.3333 ETH. Consider: ($2,000 * (4 + 1.33333)) / (0 + (1.33333 * $2,000)) = 4
+  * @return maxMintable maximum amount mintable in ETH including a new deposit
+  * @return ethPrice ethPrice with 8 decimal places (as implemented by Chainlink)
+  */
+  function calculateMaxMintable() public view returns (int256, uint256) {
+    // Get the latest ETH price from the Chainlink oracle
+    uint256 ethPrice = getPrice();
+
+    int256 maxAmountInEth = (int256(s_ethCollateralRatio * s_sdusdMinted * 1e18) - int256(ethPrice * address(this).balance)) / (int256(ethPrice) - int256(ethPrice * s_ethCollateralRatio));
+
+    return (maxAmountInEth, ethPrice);
+
+  }
+
+
+  /**
+   * @dev ethPrice has 8 decimal places, so we add 10 zeros to it to allow it to match msg.value, which is expressed in wei
+   */
+  function getPrice() internal view returns (uint256) {
+    (, int256 ethPrice, , , ) = i_ethPriceFeed.latestRoundData();
+
+    if (ethPrice <= 0) {
+      revert SDUSD__InvalidEthPrice();
+    }
+
+    return uint256(ethPrice * 1e10);
+  }
 
 
   // calculate the sqrt for the calculateRedemption function
@@ -243,33 +234,28 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard {
   }
 
 
-  function getConversionRate(uint256 _ethAmount) internal view returns (uint256) {
-    uint256 ethPrice = getPrice();
-    uint256 ethAmountInUsd = (ethPrice * _ethAmount) / 1e18;
-    return ethAmountInUsd;
-  }
+  /** The following functions can change the value of the formulas
+  * Can only be done by a vote of the DAO
+  */
 
-  	// The following functions change the variables
-
-  // Changes the mintingThreshold
-	// Can only be called by owner (which will be the Timelock contract)
-  function changeMintingThreshold(uint256 newValue) public {
+  // Owner will be the Timelock contract
+  function changeMintingThreshold(uint256 newValue) public onlyOwner {
     s_ethCollateralRatio = newValue;
     emit MintingThresholdChanged(newValue);
   }
 
 
 	// Changes degredationThreshold
-  function changeDegeadationThreshold(uint256 newValue) public {
+  function changeDegeadationThreshold(uint256 newValue) public onlyOwner {
     s_degredationThreshold = newValue;
     emit DegredationThresholdChanged(newValue);
   }
 
 
-  // Getter functions
+  /** Getter functions */
 
-  function getOwner() external view returns (address) {
-    return i_owner;
+  function getPriceFeed() external view returns (AggregatorV3Interface) {
+    return i_ethPriceFeed;
   }
 
   function getEthCollateralRatio() external view returns (uint256) {
