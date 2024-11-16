@@ -29,12 +29,13 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL } = re
 			await deployments.fixture(["all"]);
 			sdusd = await ethers.getContract("SDUSD", deployer);
 			mockV3Aggregator = await ethers.getContract("MockV3Aggregator", deployer);
+      // console.log("mockV3Aggregator : ", mockV3Aggregator);
 		})
 
 		describe("constructor", function () {
 			it("sets the aggregator addresses correctly", async () => {
 				const response = await sdusd.getPriceFeed();
-				assert.equal(response, mockV3Aggregator.target)
+				assert.equal(response, mockV3Aggregator.address)
 			})
 
 			it("sets the degredationThreshold  correctly", async () => {
@@ -58,13 +59,13 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL } = re
 
 		})
 
-		// describe("mintSDUSD", function () {
-		// 	// https://ethereum-waffle.readthedocs.io/en/latest/matchers.html
-		// 	// could also do assert.fail
-		// 	it("Fails to mint SDUSD if there's no ETH in the contract", async () => {
-		// 		await expect(sdusd.mintSDUSD({value: sendValue})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
-		// 	})
-    // })
+		describe("mintSDUSD", function () {
+			// https://ethereum-waffle.readthedocs.io/en/latest/matchers.html
+			// could also do assert.fail
+			it("Fails to mint SDUSD if there's no ETH in the contract", async () => {
+				await expect(sdusd.mintSDUSD({value: sendValue})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
+			})
+    })
 
 		// 	// we could be even more precise here by making sure exactly $50 works
 		// 	// but this is good enough for now
