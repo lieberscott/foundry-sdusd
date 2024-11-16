@@ -36,10 +36,12 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
   constructor(
     address _ethPriceFeed,
     uint256 _ethCollateralRatio,
-    uint256 _degredationThreshold
+    uint256 _degredationThreshold,
+    string memory _sdusdName,
+    string memory _sdusdSymbol
   )
-  ERC20("Simple Decentralized USD", "SDUSD")
-  ERC20Permit("Simple Decentralized USD")
+  ERC20(_sdusdName, _sdusdSymbol)
+  ERC20Permit(_sdusdName)
   Ownable(msg.sender) {    
     i_ethPriceFeed = AggregatorV3Interface(_ethPriceFeed);
     s_degredationThreshold = _degredationThreshold;
@@ -197,7 +199,11 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
     // Get the latest ETH price from the Chainlink oracle
     uint256 ethPrice = getPrice();
 
-    int256 maxAmountInEth = (int256(s_ethCollateralRatio * s_sdusdMinted * 1e18) - int256(ethPrice * address(this).balance)) / (int256(ethPrice) - int256(ethPrice * s_ethCollateralRatio));
+
+    int256 maxAmountInEth = ((int256(ethPrice * address(this).balance) - int256(s_ethCollateralRatio * s_sdusdMinted)) / ((int256(s_ethCollateralRatio * ethPrice) - int256(ethPrice)))) / 100;
+    
+    // The below equation was done without accounting for the fact that etherCollateralRatio is multiplied by 100. Updated equation is above, not commented out.
+    // int256 maxAmountInEth = (int256(s_ethCollateralRatio * s_sdusdMinted * 1e18) - int256(ethPrice * address(this).balance)) / (int256(ethPrice) - int256(ethPrice * s_ethCollateralRatio));
 
     return (maxAmountInEth, ethPrice);
 

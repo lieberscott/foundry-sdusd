@@ -1,5 +1,5 @@
 const { network } = require("hardhat");
-const { developmentChains, networkConfigInfo, DEGREDATION_THRESHOLD, COLLATERAL_RATIO } = require("../utils/helper-hardhat-config");
+const { developmentChains, networkConfigInfo, DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL } = require("../utils/helper-hardhat-config");
 const { verify } = require("../utils/verify");
 const { getContractAt } = require("ethers");
 
@@ -21,7 +21,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
   log("----------------------------------------------------");
   log("Deploying SDUSD and waiting for confirmations...");
 
-  const arguments = [ethUsdPriceFeedAddress, COLLATERAL_RATIO, DEGREDATION_THRESHOLD];
+  const arguments = [ethUsdPriceFeedAddress, COLLATERAL_RATIO, DEGREDATION_THRESHOLD, SDUSD_NAME, SDUSD_SYMBOL];
 
 
   const sdusdTokenDeployment = await deploy("SDUSD", {

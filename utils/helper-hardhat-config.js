@@ -33,7 +33,8 @@ const INITIAL_PRICE = 200000000000; // $2,000 + eight 0s
 // 01-deploy-sdusd.js consts
 const COLLATERAL_RATIO = 400; // need it in the 100s because degredation threshold should be specifiable to the 100th
 const DEGREDATION_THRESHOLD = 150; // need it in the 100s because degredation threshold should be specifiable to the 0.01 percentage
-
+const SDUSD_NAME = "Simple Decentralized SDUSD";
+const SDUSD_SYMBOL = "SDUSD";
 
 // 02-deploy-sdnft.js consts
 const SDNFT_NAME = "Simple Decentralized NFT";
@@ -68,6 +69,8 @@ module.exports = {
   INITIAL_PRICE,
   COLLATERAL_RATIO,
   DEGREDATION_THRESHOLD,
+  SDUSD_NAME,
+  SDUSD_SYMBOL,
   SDNFT_NAME,
   SDNFT_SYMBOL,
   developmentChains,

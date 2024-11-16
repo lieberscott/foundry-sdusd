@@ -1,7 +1,8 @@
 // const { assert, expect } = require("chai")
 const { network, deployments, ethers } = require("hardhat");
 const { developmentChains } = require("../../utils/helper-hardhat-config");
-const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO } = require("../../utils/helper-hardhat-config");
+const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL } = require("../../utils/helper-hardhat-config");
+
 
 !developmentChains.includes(network.name)
 	? describe.skip
@@ -14,6 +15,7 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO } = require("../../utils/helper-
 
 		before(async () => {
 			const chai = await import('chai');
+      // chai.use(await import("@nomicfoundation/hardhat-chai-matchers"));
 			global.expect = chai.expect; // Make `expect` available globally if needed
 			global.assert = chai.assert; // Make `assert` available globally if needed
 		});
@@ -44,16 +46,25 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO } = require("../../utils/helper-
 				const response = await sdusd.getEthCollateralRatio();
 				assert.equal(response, COLLATERAL_RATIO);
 			})
+
+      it("initializes the token with the correct name and symbol ", async () => {
+        const name = (await sdusd.name()).toString()
+        assert.equal(name, SDUSD_NAME)
+
+        const symbol = (await sdusd.symbol()).toString()
+        assert.equal(symbol, SDUSD_SYMBOL)
+    })
+
+
 		})
 
-		// describe("fund", function () {
+		// describe("mintSDUSD", function () {
 		// 	// https://ethereum-waffle.readthedocs.io/en/latest/matchers.html
 		// 	// could also do assert.fail
-		// 	it("Fails if you don't send enough ETH", async () => {
-		// 		await expect(sdusd.fund()).to.be.revertedWith(
-		// 			"You need to spend more ETH!"
-		// 		)
+		// 	it("Fails to mint SDUSD if there's no ETH in the contract", async () => {
+		// 		await expect(sdusd.mintSDUSD({value: sendValue})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
 		// 	})
+    // })
 
 		// 	// we could be even more precise here by making sure exactly $50 works
 		// 	// but this is good enough for now
