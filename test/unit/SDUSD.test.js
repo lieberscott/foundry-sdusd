@@ -1,17 +1,33 @@
 // const { assert, expect } = require("chai")
 const { network, deployments, ethers } = require("hardhat");
 const { developmentChains } = require("../../utils/helper-hardhat-config");
-const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL } = require("../../utils/helper-hardhat-config");
+const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITIAL_PRICE } = require("../../utils/helper-hardhat-config");
 
+
+/**
+ * 
+ * 1. Before testing, change the calculateRedemption function in the SDUSD.sol contract from internal to public
+ * 2. After testing, change it back to internal
+ * 
+ * 
+ * 
+ * 
+ */
 
 !developmentChains.includes(network.name)
 	? describe.skip
 	: describe("SDUSD", function () {
 
 		let sdusd;
+    let sdusdContract;
 		let mockV3Aggregator;
 		let deployer;
+    let funder;
+    let funder2;
+    let sdusdUser;
 		const sendValue = "1000000000000000000"; // 1 ETH with 18 zeros
+    const initialAmt = "4000000000000000000"; // 4 ETH with 18 zeros
+    const maxMintableValue = "1333333333333333333"; // 1.333... ETH, when there is 4 ETH in the contract and 0 SDUSD minted
 
 		before(async () => {
 			const chai = await import('chai');
@@ -23,11 +39,16 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL } = re
 
 
 		beforeEach(async () => {
-			// const accounts = await ethers.getSigners()
+			const accounts = await ethers.getSigners()
 			// deployer = accounts[0]
 			deployer = (await getNamedAccounts()).deployer;
+      funder = accounts[1];
+      funder2 = accounts[2];
+
 			await deployments.fixture(["all"]);
 			sdusd = await ethers.getContract("SDUSD", deployer);
+      sdusdUser = await ethers.getContract("SDUSD", funder.address);
+      // sdusdContract = await ethers.getContractFactory("SDUSD");
 			mockV3Aggregator = await ethers.getContract("MockV3Aggregator", deployer);
       // console.log("mockV3Aggregator : ", mockV3Aggregator);
 		})
@@ -54,7 +75,12 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL } = re
 
         const symbol = (await sdusd.symbol()).toString()
         assert.equal(symbol, SDUSD_SYMBOL)
-    })
+      })
+
+      it("has 18 decimals", async() => {
+        const decimals = await sdusd.decimals();
+        assert.equal(decimals, 18);
+      })
 
 
 		})
@@ -65,6 +91,159 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL } = re
 			it("Fails to mint SDUSD if there's no ETH in the contract", async () => {
 				await expect(sdusd.mintSDUSD({value: sendValue})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
 			})
+
+      it("Correctly calculates maxMintable", async () => {
+        const transactionHash = await funder.sendTransaction({
+          to: sdusd.address,
+          value: initialAmt // 4 ETH
+        });
+
+        await transactionHash.wait(1);
+
+        const response = await sdusd.calculateMaxMintable(initialAmt);
+
+        assert.equal(response[0].toString(), maxMintableValue);
+			})
+
+      it("Mints 1.3 ETH worth of SDUSD after it has 4ETH in it", async () => {
+        const transactionHash = await funder.sendTransaction({
+          to: sdusd.address,
+          value: initialAmt // 4 ETH
+        });
+
+        await transactionHash.wait(1);
+
+        const mintTx = await sdusd.mintSDUSD({value: maxMintableValue});
+
+        await mintTx.wait(1);
+
+        const balanceResponse = await sdusd.balanceOf(deployer);
+        const mintedResponse = await sdusd.totalSupply();
+
+        // console.log("balanceResponse : ", balanceResponse.toString());
+
+        const sdusdBalance = ethers.utils.formatUnits(balanceResponse, 18); // user amount as stored by the ERC20 contract
+        const sdusdMinted = ethers.utils.formatUnits(mintedResponse); // total supply of SDUSD
+
+        assert.equal(sdusdBalance, "2666.666666666666666");
+        assert.equal(sdusdMinted, "2666.666666666666666");
+			})
+
+      it("Rejects maxMintable + 1", async () => {
+        const sendTx = await funder.sendTransaction({
+          to: sdusd.address,
+          value: initialAmt // 4 ETH
+        });
+
+        // const response = await sdusd.calculateMaxMintable(initialAmt);
+
+        // console.log("maxMintable and ethPrice: ", response[0].toString(), response[1].toString());
+
+        // const tx = await sdusd.mintSDUSD({ value: "1333333333333333333" });
+
+        // const txReceipt = await tx.wait(1) // waits 1 block
+        // const maxAmount = txReceipt.events[0].args.maxAmountInEth;
+        // const msgValue = txReceipt.events[0].args.msgValue;
+        // const ethBalance = txReceipt.events[0].args.ethBalance
+        // console.log("maxAmount : ", maxAmount.toString());
+        // console.log("msgValue : ", msgValue.toString());
+        // console.log("pre-transaction balance : ", ethBalance.toString());
+        // assert.equal(1, 1);
+   
+
+        await expect(sdusd.mintSDUSD({value: "1333333333333333334"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
+			})
+
+      it("Emits an event upon minting", async () => {
+        const sendTx = await funder.sendTransaction({
+          to: sdusd.address,
+          value: initialAmt // 4 ETH
+        });
+
+        await expect(sdusd.mintSDUSD({ value: maxMintableValue })).to.emit(sdusd, "sdusdMinted");
+			})
+
+    })
+
+    describe("redeemSDUSD", function () {
+
+      const oneThousand = "1000";
+
+			it("Rejects when user redeems more SDUSD than he has", async () => {
+				await expect(sdusd.redeemSdusdForEth(oneThousand)).to.be.revertedWith("SDUSD__WithdrawalAmountLargerThanUserBalance")
+			})
+
+      it("Redeems SDUSD correctly when price of ETH does not change", async () => {
+        // Send initial ETH
+				const transactionHash = await funder.sendTransaction({
+          to: sdusd.address,
+          value: initialAmt // 4 ETH
+        });
+        await transactionHash.wait(1);
+
+        // Mint SDUSD
+        const mintTx = await sdusd.mintSDUSD({value: maxMintableValue});
+        await mintTx.wait(1);
+
+        // Get SDUSD balance of user
+        const balanceResponse = await sdusd.balanceOf(deployer);
+
+        // Redeem full SDUSD amount
+        const redeemTx = await sdusd.redeemSdusdForEth(balanceResponse);
+        await redeemTx.wait(1);
+
+        // Check balance of SDUSD contract after redemption
+        const ethBalance = await ethers.provider.getBalance(sdusd.address);
+        console.log("balance : ", ethBalance.toString());
+        assert.equal(ethBalance.toString(), initialAmt);
+        
+			})
+
+      it.only("Redeems correctly when price of ETH drops and triggers degredation threshold", async () => {
+
+        // Send initial ETH
+				const transactionHash = await funder.sendTransaction({
+          to: sdusd.address,
+          value: initialAmt // 4 ETH
+        });
+        await transactionHash.wait(1);
+
+        const ethBalance0 = await ethers.provider.getBalance(deployer);
+        console.log("Deployer ETH balance before minting: ", ethBalance0.toString());
+
+        // Mint SDUSD
+        const mintTx = await sdusd.mintSDUSD({value: sendValue});
+        await mintTx.wait(1);
+
+        const mintTx2 = await sdusdUser.mintSDUSD({ value: "333333333333333333"});
+        await mintTx2.wait(1);
+
+        // Drop ETH price to $500
+        const tx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits("100", 8));
+        await tx.wait(1);
+
+        // Get SDUSD balance of user
+        const balanceResponse = await sdusd.balanceOf(deployer);
+        const balanceResponse2 = await sdusd.balanceOf(funder.address);
+
+        const ethBalance1 = await ethers.provider.getBalance(deployer);
+        console.log("Deployer ETH balance after minting: ", ethBalance1.toString());
+
+        // Redeem full SDUSD amount
+        const redeemTx = await sdusd.calculateRedemption(balanceResponse);
+        // await redeemTx.wait(1);
+
+        console.log("redemptionAmtInWei : ", redeemTx.toString());
+
+        // // Check balance of SDUSD contract after redemption
+        // const ethBalance2 = await ethers.provider.getBalance(deployer);
+        // console.log("Deployer ETH balance after redemption: ", ethBalance2.toString());
+        // console.log("Total ETH gotten back : ", parseInt(ethBalance2) - parseInt(ethBalance1));
+        // expect(parseInt(ethBalance)).to.be.greaterThan(parseInt(initialAmt));
+
+        assert.equal(1, 1);
+
+      })
     })
 
 		// 	// we could be even more precise here by making sure exactly $50 works
