@@ -90,19 +90,22 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
     uint256 redemption = uint256(_redemption);
 
-    if (redemption > address(this).balance) {
-      revert SDUSD__WithdrawalAmountLargerThanSdusdSupply();
-    }
-
     // Update balances and transfer ETH
     _burn(msg.sender, _amount);
-    payable(msg.sender).transfer(redemption);
+
+    if (redemption > address(this).balance) {
+      // ETH price has dropped so much that the redemption is higher than the ETH balance of the contract, so simply return the entire balance
+      payable(msg.sender).transfer(address(this).balance);
+    }
+    else {
+      payable(msg.sender).transfer(redemption);
+    }
   }
 
 
   // returns amountUserGetsInWei
   // _amount is amount of sdusd being redeemed
-  function calculateRedemption(uint256 _amount) internal view returns (int256) {
+  function calculateRedemption(uint256 _amount) public view returns (int256) {
 
     // Get current ETH price
     uint256 _ethPrice = getPrice();
@@ -122,7 +125,7 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
      * 
      */
 
-    // Cast everyhing to an int256
+    // Cast everything to an int256
     int256 amount = int256(_amount);
     int256 ethPrice = int256(_ethPrice);
     int256 balance = int256(address(this).balance);
@@ -132,7 +135,9 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
     // person has all sdusdMinted, so give them back all the ETH (this should rarely or maybe never happen, but have to check this first because in this case it will result in division by 0 in an equation below, so we avoid that here)
     if (totalSupply - amount <= 0) {
-      return amount * 1e18 / ethPrice; // <- should equal address(this).balance in wei
+      // if the max amount of SDUSD has been minted, then this should equal address(this).balance in wei
+      // but if the max amount of SDUSD has not been minted, this would be less than address(this).balance
+      return amount * 1e18 / ethPrice;
     }
 
     /**
@@ -151,7 +156,7 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
       return amount * 1e18 / ethPrice; // should be wei amount
     }
     // We are using the following variables:
-    // a - amount (this is the input to this equation)
+    // a - amount (amount being redeemed, this is the argument to this function)
     // p - ethPrice
     // b - ethBalance in SDUSD contract
     // d - degredationThreshold (this is a global variable)

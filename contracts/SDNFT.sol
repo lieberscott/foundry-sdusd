@@ -8,17 +8,9 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Votes.sol";
 
 contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 contract extensions
 
-  // uint256 public constant SDNFT_ID = 1;
-  // uint256 public constant NON_TRANSFERABLE_NFT_ID = 2;
-
-
-
   string public baseTokenURI;
-  uint256 private premiumNftPrice = 1000000000000000000; // 1 ETH
-  uint256 private regularNftPrice = 100000000000000000; // 0.1 ETH
-
-  uint256 public premiumNftCounter = 0; // NFTs 0 - 9999
-  uint256 public regularNftCounter = 10000; // NFTs 10000+
+  uint256 private price = 100000000000000000; // 0.1 ETH
+  uint256 public counter = 0; // NFTs 10000+
 
   address sdusdTokenAddress;
 
@@ -36,27 +28,13 @@ contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 cont
   }
 
 
-
-  function buyPremiumNft() external payable {
-    require(msg.value >= premiumNftPrice, "Not enough ETH");
-    require(premiumNftCounter < 9999, "Premium NFTs sold out");
-
-    uint256 newItemId = premiumNftCounter;
-    _safeMint(msg.sender, newItemId);
-    premiumNftCounter++;
-
-    // add to voting power
-
-    // mint soulbound token
-  }
-
-
   function buyRegularNft() external payable {
-    require(msg.value >= regularNftPrice, "Not enough ETH");
+    require(msg.value >= price, "Not enough ETH");
+    require(counter < 10000, "Sold out");
     
-    uint256 newItemId = regularNftCounter;
+    uint256 newItemId = counter;
     _safeMint(msg.sender, newItemId);
-    regularNftCounter++;
+    counter++;
 
     // add to voting power
 
@@ -64,6 +42,13 @@ contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 cont
   }
 
 
+  function getPrice() external view returns (uint256) {
+    return price;
+  }
+
+  function getIndex() external view returns (uint256) {
+    return counter;
+  }
 
   function _baseURI() internal view override returns (string memory) {
     return baseTokenURI;
@@ -112,9 +97,5 @@ contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 cont
     {
         super._increaseBalance(account, value);
     }
-
-
-
-
 
 }

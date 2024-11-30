@@ -2,7 +2,7 @@
 const { network, deployments, ethers } = require("hardhat");
 const { developmentChains } = require("../../utils/helper-hardhat-config");
 const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITIAL_PRICE } = require("../../utils/helper-hardhat-config");
-
+const { calculateRedemption } = require("../utils");
 
 /**
  * 
@@ -18,13 +18,18 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
 	? describe.skip
 	: describe("SDUSD", function () {
 
-		let sdusd;
+    let deployer;
+    let adam;
+    let bob;
+    let cathy;
+    let dana;
+		let sdusdFromDeployer;
+    let sdusdFromAdam;
+    let sdusdFromBob;
+    let sdusdFromCathy;
+    let sdusdFromDana;
     let sdusdContract;
 		let mockV3Aggregator;
-		let deployer;
-    let funder;
-    let funder2;
-    let sdusdUser;
 		const sendValue = "1000000000000000000"; // 1 ETH with 18 zeros
     const initialAmt = "4000000000000000000"; // 4 ETH with 18 zeros
     const maxMintableValue = "1333333333333333333"; // 1.333... ETH, when there is 4 ETH in the contract and 0 SDUSD minted
@@ -42,12 +47,17 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
 			const accounts = await ethers.getSigners()
 			// deployer = accounts[0]
 			deployer = (await getNamedAccounts()).deployer;
-      funder = accounts[1];
-      funder2 = accounts[2];
+      adam = accounts[1];
+      bob = accounts[2];
+      cathy = accounts[3];
+      dana = accounts[4];
 
 			await deployments.fixture(["all"]);
-			sdusd = await ethers.getContract("SDUSD", deployer);
-      sdusdUser = await ethers.getContract("SDUSD", funder.address);
+			sdusdFromDeployer = await ethers.getContract("SDUSD", deployer);
+      sdusdFromAdam = await ethers.getContract("SDUSD", adam.address);
+      sdusdFromBob = await ethers.getContract("SDUSD", bob.address);
+      sdusdFromCathy = await ethers.getContract("SDUSD", cathy.address);
+      sdusdFromDana = await ethers.getContract("SDUSD", dana.address);
       // sdusdContract = await ethers.getContractFactory("SDUSD");
 			mockV3Aggregator = await ethers.getContract("MockV3Aggregator", deployer);
       // console.log("mockV3Aggregator : ", mockV3Aggregator);
@@ -55,30 +65,30 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
 
 		describe("constructor", function () {
 			it("sets the aggregator addresses correctly", async () => {
-				const response = await sdusd.getPriceFeed();
+				const response = await sdusdFromDeployer.getPriceFeed();
 				assert.equal(response, mockV3Aggregator.address)
 			})
 
 			it("sets the degredationThreshold  correctly", async () => {
-				const response = await sdusd.getDegredationThreshold();
+				const response = await sdusdFromDeployer.getDegredationThreshold();
 				assert.equal(response, DEGREDATION_THRESHOLD);
 			})
 
 			it("sets the collateralRatio correctly", async () => {
-				const response = await sdusd.getEthCollateralRatio();
+				const response = await sdusdFromDeployer.getEthCollateralRatio();
 				assert.equal(response, COLLATERAL_RATIO);
 			})
 
       it("initializes the token with the correct name and symbol ", async () => {
-        const name = (await sdusd.name()).toString()
+        const name = (await sdusdFromDeployer.name()).toString()
         assert.equal(name, SDUSD_NAME)
 
-        const symbol = (await sdusd.symbol()).toString()
+        const symbol = (await sdusdFromDeployer.symbol()).toString()
         assert.equal(symbol, SDUSD_SYMBOL)
       })
 
       it("has 18 decimals", async() => {
-        const decimals = await sdusd.decimals();
+        const decimals = await sdusdFromDeployer.decimals();
         assert.equal(decimals, 18);
       })
 
@@ -89,36 +99,36 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
 			// https://ethereum-waffle.readthedocs.io/en/latest/matchers.html
 			// could also do assert.fail
 			it("Fails to mint SDUSD if there's no ETH in the contract", async () => {
-				await expect(sdusd.mintSDUSD({value: sendValue})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
+				await expect(sdusdFromDeployer.mintSDUSD({value: sendValue})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
 			})
 
       it("Correctly calculates maxMintable", async () => {
-        const transactionHash = await funder.sendTransaction({
-          to: sdusd.address,
+        const transactionHash = await adam.sendTransaction({
+          to: sdusdFromDeployer.address,
           value: initialAmt // 4 ETH
         });
 
         await transactionHash.wait(1);
 
-        const response = await sdusd.calculateMaxMintable(initialAmt);
+        const response = await sdusdFromDeployer.calculateMaxMintable(initialAmt);
 
         assert.equal(response[0].toString(), maxMintableValue);
 			})
 
       it("Mints 1.3 ETH worth of SDUSD after it has 4ETH in it", async () => {
-        const transactionHash = await funder.sendTransaction({
-          to: sdusd.address,
+        const transactionHash = await adam.sendTransaction({
+          to: sdusdFromDeployer.address,
           value: initialAmt // 4 ETH
         });
 
         await transactionHash.wait(1);
 
-        const mintTx = await sdusd.mintSDUSD({value: maxMintableValue});
+        const mintTx = await sdusdFromDeployer.mintSDUSD({value: maxMintableValue});
 
         await mintTx.wait(1);
 
-        const balanceResponse = await sdusd.balanceOf(deployer);
-        const mintedResponse = await sdusd.totalSupply();
+        const balanceResponse = await sdusdFromDeployer.balanceOf(deployer);
+        const mintedResponse = await sdusdFromDeployer.totalSupply();
 
         // console.log("balanceResponse : ", balanceResponse.toString());
 
@@ -130,16 +140,16 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
 			})
 
       it("Rejects maxMintable + 1", async () => {
-        const sendTx = await funder.sendTransaction({
-          to: sdusd.address,
+        const sendTx = await adam.sendTransaction({
+          to: sdusdFromDeployer.address,
           value: initialAmt // 4 ETH
         });
 
-        // const response = await sdusd.calculateMaxMintable(initialAmt);
+        // const response = await sdusdFromDeployer.calculateMaxMintable(initialAmt);
 
         // console.log("maxMintable and ethPrice: ", response[0].toString(), response[1].toString());
 
-        // const tx = await sdusd.mintSDUSD({ value: "1333333333333333333" });
+        // const tx = await sdusdFromDeployer.mintSDUSD({ value: "1333333333333333333" });
 
         // const txReceipt = await tx.wait(1) // waits 1 block
         // const maxAmount = txReceipt.events[0].args.maxAmountInEth;
@@ -151,16 +161,16 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
         // assert.equal(1, 1);
    
 
-        await expect(sdusd.mintSDUSD({value: "1333333333333333334"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
+        await expect(sdusdFromDeployer.mintSDUSD({value: "1333333333333333334"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
 			})
 
       it("Emits an event upon minting", async () => {
-        const sendTx = await funder.sendTransaction({
-          to: sdusd.address,
+        const sendTx = await adam.sendTransaction({
+          to: sdusdFromDeployer.address,
           value: initialAmt // 4 ETH
         });
 
-        await expect(sdusd.mintSDUSD({ value: maxMintableValue })).to.emit(sdusd, "sdusdMinted");
+        await expect(sdusdFromDeployer.mintSDUSD({ value: maxMintableValue })).to.emit(sdusdFromDeployer, "sdusdMinted");
 			})
 
     })
@@ -170,52 +180,191 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
       const oneThousand = "1000";
 
 			it("Rejects when user redeems more SDUSD than he has", async () => {
-				await expect(sdusd.redeemSdusdForEth(oneThousand)).to.be.revertedWith("SDUSD__WithdrawalAmountLargerThanUserBalance")
+				await expect(sdusdFromDeployer.redeemSdusdForEth(oneThousand)).to.be.revertedWith("SDUSD__WithdrawalAmountLargerThanUserBalance")
 			})
 
       it("Redeems SDUSD correctly when price of ETH does not change", async () => {
         // Send initial ETH
-				const transactionHash = await funder.sendTransaction({
-          to: sdusd.address,
+				const transactionHash = await adam.sendTransaction({
+          to: sdusdFromDeployer.address,
           value: initialAmt // 4 ETH
         });
         await transactionHash.wait(1);
 
         // Mint SDUSD
-        const mintTx = await sdusd.mintSDUSD({value: maxMintableValue});
+        const mintTx = await sdusdFromDeployer.mintSDUSD({value: maxMintableValue});
         await mintTx.wait(1);
 
         // Get SDUSD balance of user
-        const balanceResponse = await sdusd.balanceOf(deployer);
+        const balanceResponse = await sdusdFromDeployer.balanceOf(deployer);
 
         // Redeem full SDUSD amount
-        const redeemTx = await sdusd.redeemSdusdForEth(balanceResponse);
+        const redeemTx = await sdusdFromDeployer.redeemSdusdForEth(balanceResponse);
         await redeemTx.wait(1);
 
         // Check balance of SDUSD contract after redemption
-        const ethBalance = await ethers.provider.getBalance(sdusd.address);
-        console.log("balance : ", ethBalance.toString());
+        const ethBalance = await ethers.provider.getBalance(sdusdFromDeployer.address);
         assert.equal(ethBalance.toString(), initialAmt);
         
 			})
 
-      it.only("Redeems correctly when price of ETH drops and triggers degredation threshold", async () => {
+      it("Redeems correctly when one user has all the SDUSD and the price of ETH does not change", async () => {
 
-        // Send initial ETH
-				const transactionHash = await funder.sendTransaction({
-          to: sdusd.address,
+        // degredationThreshold
+        // supplyOfSdusd
+        // amountOfSdusdBeingRedeemed
+        // ethPrice
+        // balanceOfEth
+
+        // Step 0: Get user beginning Eth balance
+        const ethBalanceStart = (await ethers.provider.getBalance(adam.address)).toString();
+
+        // Step 1: Seed contract with ETH
+				const transactionHash = await bob.sendTransaction({
+          to: sdusdFromDeployer.address,
           value: initialAmt // 4 ETH
         });
         await transactionHash.wait(1);
 
+        // Step 2: Mint SDUSD to one person
+        const mintTx = await sdusdFromAdam.mintSDUSD({value: sendValue});
+        const mintTxReceipt = await mintTx.wait(1);
+
+        const gasUsed1 = mintTxReceipt.gasUsed;
+        const effectiveGasPrice1 = mintTxReceipt.effectiveGasPrice;
+        const gasCost1 = gasUsed1.mul(effectiveGasPrice1);
+
+        // Step 3: Get supply of SDUSD
+        const supply = (await sdusdFromDeployer.totalSupply()).toString();
+
+        // Step 4: Get the user supply of SDUSD
+        const userSdusdSupplyTx = await sdusdFromAdam.balanceOf(adam.address);
+        const userSdusdSupply = userSdusdSupplyTx.toString();
+
+        // Step 5: Redeem SDUSD
+        const redeemTx = await sdusdFromAdam.redeemSdusdForEth(userSdusdSupply);
+        const redeemTxReceipt = await redeemTx.wait(1);
+        const amount = redeemTx.toString();
+
+        const gasUsed2 = redeemTxReceipt.gasUsed;
+        const effectiveGasPrice2 = redeemTxReceipt.effectiveGasPrice;
+        const gasCost2 = gasUsed2.mul(effectiveGasPrice2);
+
+        // Step 6: Get balance of ETH
+        const ethBalanceEnd = await ethers.provider.getBalance(adam.address);
+        
+        assert.equal(ethBalanceStart.toString(), ethBalanceEnd.add(gasCost1).add(gasCost2).toString());
+
+      })
+
+      it("Redeems correctly when one user has all the SDUSD and the price of ETH drops 75%", async () => {
+
+        // Step 0: Get user beginning Eth balance
+        const ethBalanceStart = await ethers.provider.getBalance(adam.address);
+
+        // Step 1: Seed contract with ETH
+				const transactionHash = await bob.sendTransaction({
+          to: sdusdFromDeployer.address,
+          value: initialAmt // 4 ETH
+        });
+        await transactionHash.wait(1);
+
+        // Step 2: Mint SDUSD to one person
+        const mintTx = await sdusdFromAdam.mintSDUSD({value: sendValue});
+        const mintTxReceipt = await mintTx.wait(1);
+
+        const gasUsed1 = mintTxReceipt.gasUsed;
+        const effectiveGasPrice1 = mintTxReceipt.effectiveGasPrice;
+        const gasCost1 = gasUsed1.mul(effectiveGasPrice1);
+
+        // Step 3: Drop ETH price to $500
+        const tx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits("100", 8));
+        await tx.wait(1);
+
+        // Step 4: Get supply of SDUSD
+        const supply = (await sdusdFromDeployer.totalSupply()).toString();
+
+        // Step 4A: Get the user supply of SDUSD
+        const userSdusdSupplyTx = await sdusdFromAdam.balanceOf(adam.address);
+        const userSdusdSupply = userSdusdSupplyTx.toString();
+
+        // Step 5: Redeem SDUSD
+        const redeemTx = await sdusdFromAdam.redeemSdusdForEth(userSdusdSupply);
+        const redeemTxReceipt = await redeemTx.wait(1);
+
+        const gasUsed2 = redeemTxReceipt.gasUsed;
+        const effectiveGasPrice2 = redeemTxReceipt.effectiveGasPrice;
+        const gasCost2 = gasUsed2.mul(effectiveGasPrice2);
+
+        // Step 6: Get balance of ETH
+        const ethBalanceEnd = await ethers.provider.getBalance(adam.address);
+        
+        assert.equal(ethBalanceStart.add(initialAmt).toString(), ethBalanceEnd.add(gasCost1).add(gasCost2).toString());
+
+      });
+
+
+      it.only("Redeems correctly when one user has all the SDUSD and the price of ETH 4x's", async () => {
+
+        const updatedEthPrice = 8000;
+
+        // Step 0: Get user beginning Eth balance
+        const ethBalanceStart = await ethers.provider.getBalance(adam.address);
+
+        // Step 1: Seed contract with ETH
+				const transactionHash = await bob.sendTransaction({
+          to: sdusdFromDeployer.address,
+          value: initialAmt // 4 ETH
+        });
+        await transactionHash.wait(1);
+
+        // Step 2: Mint SDUSD to one person
+        const mintTx = await sdusdFromAdam.mintSDUSD({value: sendValue});
+        const mintTxReceipt = await mintTx.wait(1);
+
+        const gasUsed1 = mintTxReceipt.gasUsed;
+        const effectiveGasPrice1 = mintTxReceipt.effectiveGasPrice;
+        const gasCost1 = gasUsed1.mul(effectiveGasPrice1);
+
+        // Step 3: Drop ETH price to $500
+        const tx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(updatedEthPrice.toString(), 8));
+        await tx.wait(1);
+
+        // Step 4: Get supply of SDUSD
+        const supply = await sdusdFromDeployer.totalSupply();
+
+        // Step 4A: Get the user supply of SDUSD
+        const userSdusdSupplyTx = await sdusdFromAdam.balanceOf(adam.address);
+        const userSdusdSupply = userSdusdSupplyTx.toString();
+
+        // Step 5: Redeem SDUSD
+        const redeemTx = await sdusdFromAdam.redeemSdusdForEth(userSdusdSupply);
+        const redeemTxReceipt = await redeemTx.wait(1);
+
+        const gasUsed2 = redeemTxReceipt.gasUsed;
+        const effectiveGasPrice2 = redeemTxReceipt.effectiveGasPrice;
+        const gasCost2 = gasUsed2.mul(effectiveGasPrice2);
+
+        // Step 5A: Get redemption from utils
+        const result = calculateRedemption(DEGREDATION_THRESHOLD, supply, userSdusdSupply, updatedEthPrice, parseInt(initialAmt) + parseInt(sendValue));
+        const localRedemption = ethers.BigNumber.from(result.toString());
+        
+        // Step 6: Get user ending balance of ETH
+        const ethBalanceEnd = await ethers.provider.getBalance(adam.address);
+        
+        assert.equal(ethBalanceStart.sub(sendValue).add(localRedemption).toString(), ethBalanceEnd.add(gasCost1).add(gasCost2).toString());
+
+      })
+
+      it("Redeems correctly", async () => {
+        const degredationThreshold = 400;
+        
+
         const ethBalance0 = await ethers.provider.getBalance(deployer);
         console.log("Deployer ETH balance before minting: ", ethBalance0.toString());
 
-        // Mint SDUSD
-        const mintTx = await sdusd.mintSDUSD({value: sendValue});
-        await mintTx.wait(1);
 
-        const mintTx2 = await sdusdUser.mintSDUSD({ value: "333333333333333333"});
+        const mintTx2 = await sdusdFromAdam.mintSDUSD({ value: "333333333333333333"});
         await mintTx2.wait(1);
 
         // Drop ETH price to $500
@@ -223,14 +372,14 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
         await tx.wait(1);
 
         // Get SDUSD balance of user
-        const balanceResponse = await sdusd.balanceOf(deployer);
-        const balanceResponse2 = await sdusd.balanceOf(funder.address);
+        const balanceResponse = await sdusdFromDeployer.balanceOf(deployer);
+        const balanceResponse2 = await sdusdFromDeployer.balanceOf(adam.address);
 
         const ethBalance1 = await ethers.provider.getBalance(deployer);
         console.log("Deployer ETH balance after minting: ", ethBalance1.toString());
 
         // Redeem full SDUSD amount
-        const redeemTx = await sdusd.calculateRedemption(balanceResponse);
+        // const redeemTx = await sdusdFromDeployer.calculateRedemption(balanceResponse);
         // await redeemTx.wait(1);
 
         console.log("redemptionAmtInWei : ", redeemTx.toString());
@@ -241,7 +390,7 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
         // console.log("Total ETH gotten back : ", parseInt(ethBalance2) - parseInt(ethBalance1));
         // expect(parseInt(ethBalance)).to.be.greaterThan(parseInt(initialAmt));
 
-        assert.equal(1, 1);
+        assert.equal(ethBalanceStart.toString(), ethBalanceStart2.toString());
 
       })
     })
@@ -249,41 +398,41 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
 		// 	// we could be even more precise here by making sure exactly $50 works
 		// 	// but this is good enough for now
 		// 	it("Updates the amount funded data structure", async () => {
-		// 		await sdusd.fund({ value: sendValue })
-		// 		const response = await sdusd.getAddressToAmountFunded(
+		// 		await sdusdFromDeployer.fund({ value: sendValue })
+		// 		const response = await sdusdFromDeployer.getAddressToAmountFunded(
 		// 			deployer
 		// 		)
 		// 		assert.equal(response.toString(), sendValue.toString())
 		// 	})
 
 		// 	it("Adds funder to array of funders", async () => {
-		// 		await sdusd.fund({ value: sendValue })
-		// 		const response = await sdusd.getFunder(0)
+		// 		await sdusdFromDeployer.fund({ value: sendValue })
+		// 		const response = await sdusdFromDeployer.getFunder(0)
 		// 		assert.equal(response, deployer)
 		// 	})
 		// })
     //       describe("withdraw", function () {
     //           beforeEach(async () => {
-    //               await sdusd.fund({ value: sendValue })
+    //               await sdusdFromDeployer.fund({ value: sendValue })
     //           })
     //           it("withdraws ETH from a single funder", async () => {
     //               // Arrange
     //               const startingFundMeBalance =
-    //                   await sdusd.provider.getBalance(sdusd.address)
+    //                   await sdusdFromDeployer.provider.getBalance(sdusdFromDeployer.address)
     //               const startingDeployerBalance =
-    //                   await sdusd.provider.getBalance(deployer)
+    //                   await sdusdFromDeployer.provider.getBalance(deployer)
 
     //               // Act
-    //               const transactionResponse = await sdusd.withdraw()
+    //               const transactionResponse = await sdusdFromDeployer.withdraw()
     //               const transactionReceipt = await transactionResponse.wait()
     //               const { gasUsed, effectiveGasPrice } = transactionReceipt
     //               const gasCost = gasUsed.mul(effectiveGasPrice)
 
-    //               const endingFundMeBalance = await sdusd.provider.getBalance(
-    //                   sdusd.address
+    //               const endingFundMeBalance = await sdusdFromDeployer.provider.getBalance(
+    //                   sdusdFromDeployer.address
     //               )
     //               const endingDeployerBalance =
-    //                   await sdusd.provider.getBalance(deployer)
+    //                   await sdusdFromDeployer.provider.getBalance(deployer)
 
     //               // Assert
     //               // Maybe clean up to understand the testing
@@ -301,31 +450,31 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
     //               // Arrange
     //               const accounts = await ethers.getSigners()
     //               for (i = 1; i < 6; i++) {
-    //                   const fundMeConnectedContract = await sdusd.connect(
+    //                   const fundMeConnectedContract = await sdusdFromDeployer.connect(
     //                       accounts[i]
     //                   )
     //                   await fundMeConnectedContract.fund({ value: sendValue })
     //               }
     //               const startingFundMeBalance =
-    //                   await sdusd.provider.getBalance(sdusd.address)
+    //                   await sdusdFromDeployer.provider.getBalance(sdusdFromDeployer.address)
     //               const startingDeployerBalance =
-    //                   await sdusd.provider.getBalance(deployer)
+    //                   await sdusdFromDeployer.provider.getBalance(deployer)
 
     //               // Act
-    //               const transactionResponse = await sdusd.cheaperWithdraw()
+    //               const transactionResponse = await sdusdFromDeployer.cheaperWithdraw()
     //               // Let's comapre gas costs :)
-    //               // const transactionResponse = await sdusd.withdraw()
+    //               // const transactionResponse = await sdusdFromDeployer.withdraw()
     //               const transactionReceipt = await transactionResponse.wait()
     //               const { gasUsed, effectiveGasPrice } = transactionReceipt
     //               const withdrawGasCost = gasUsed.mul(effectiveGasPrice)
     //               console.log(`GasCost: ${withdrawGasCost}`)
     //               console.log(`GasUsed: ${gasUsed}`)
     //               console.log(`GasPrice: ${effectiveGasPrice}`)
-    //               const endingFundMeBalance = await sdusd.provider.getBalance(
-    //                   sdusd.address
+    //               const endingFundMeBalance = await sdusdFromDeployer.provider.getBalance(
+    //                   sdusdFromDeployer.address
     //               )
     //               const endingDeployerBalance =
-    //                   await sdusd.provider.getBalance(deployer)
+    //                   await sdusdFromDeployer.provider.getBalance(deployer)
     //               // Assert
     //               assert.equal(
     //                   startingFundMeBalance
@@ -334,11 +483,11 @@ const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITI
     //                   endingDeployerBalance.add(withdrawGasCost).toString()
     //               )
     //               // Make a getter for storage variables
-    //               await expect(sdusd.getFunder(0)).to.be.reverted
+    //               await expect(sdusdFromDeployer.getFunder(0)).to.be.reverted
 
     //               for (i = 1; i < 6; i++) {
     //                   assert.equal(
-    //                       await sdusd.getAddressToAmountFunded(
+    //                       await sdusdFromDeployer.getAddressToAmountFunded(
     //                           accounts[i].address
     //                       ),
     //                       0
