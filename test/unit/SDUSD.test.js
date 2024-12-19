@@ -2,7 +2,7 @@
 const { network, deployments, ethers } = require("hardhat");
 const { developmentChains } = require("../../utils/helper-hardhat-config");
 const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITIAL_PRICE } = require("../../utils/helper-hardhat-config");
-const { calculateRedemption } = require("../utils");
+const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
 /**
  * 
@@ -23,6 +23,7 @@ const { calculateRedemption } = require("../utils");
     let bob;
     let cathy;
     let dana;
+    let eric;
 		let sdusdFromDeployer;
     let sdusdFromAdam;
     let sdusdFromBob;
@@ -33,6 +34,15 @@ const { calculateRedemption } = require("../utils");
 		const sendValue = "1000000000000000000"; // 1 ETH with 18 zeros
     const initialAmt = "4000000000000000000"; // 4 ETH with 18 zeros
     const maxMintableValue = "1333333333333333333"; // 1.333... ETH, when there is 4 ETH in the contract and 0 SDUSD minted
+
+    const multipleBig = "250";
+
+    const initialAmtBig = ethers.BigNumber.from(initialAmt).mul(multipleBig).toString(); // Should be 1,000 ETH
+    const sendValueBig_0 = "200000000000000000000"; // 200 ETH with 18 zeros
+    const sendValueBig_1 = "100000000000000000000"; // 100 ETH with 18 zeros
+    const sendValueBig_2 = "25000000000000000000"; // 25 ETH with 18 zeros
+    const sendValueBig_3 = "8333333333333333333"; // 8.3 ETH with 18 zeros
+    const dividedByValue = "1000000000000000000"; // 1 with 18 zeroes
 
 		before(async () => {
 			const chai = await import('chai');
@@ -51,6 +61,7 @@ const { calculateRedemption } = require("../utils");
       bob = accounts[2];
       cathy = accounts[3];
       dana = accounts[4];
+      eric = accounts[5];
 
 			await deployments.fixture(["all"]);
 			sdusdFromDeployer = await ethers.getContract("SDUSD", deployer);
@@ -58,6 +69,7 @@ const { calculateRedemption } = require("../utils");
       sdusdFromBob = await ethers.getContract("SDUSD", bob.address);
       sdusdFromCathy = await ethers.getContract("SDUSD", cathy.address);
       sdusdFromDana = await ethers.getContract("SDUSD", dana.address);
+      sdusdFromEric = await ethers.getContract("SDUSD", eric.address);
       // sdusdContract = await ethers.getContractFactory("SDUSD");
 			mockV3Aggregator = await ethers.getContract("MockV3Aggregator", deployer);
       // console.log("mockV3Aggregator : ", mockV3Aggregator);
@@ -145,23 +157,7 @@ const { calculateRedemption } = require("../utils");
           value: initialAmt // 4 ETH
         });
 
-        // const response = await sdusdFromDeployer.calculateMaxMintable(initialAmt);
-
-        // console.log("maxMintable and ethPrice: ", response[0].toString(), response[1].toString());
-
-        // const tx = await sdusdFromDeployer.mintSDUSD({ value: "1333333333333333333" });
-
-        // const txReceipt = await tx.wait(1) // waits 1 block
-        // const maxAmount = txReceipt.events[0].args.maxAmountInEth;
-        // const msgValue = txReceipt.events[0].args.msgValue;
-        // const ethBalance = txReceipt.events[0].args.ethBalance
-        // console.log("maxAmount : ", maxAmount.toString());
-        // console.log("msgValue : ", msgValue.toString());
-        // console.log("pre-transaction balance : ", ethBalance.toString());
-        // assert.equal(1, 1);
-   
-
-        await expect(sdusdFromDeployer.mintSDUSD({value: "1333333333333333334"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
+        await expect(sdusdFromDeployer.mintSDUSD({value: ethers.BigNumber.from(maxMintableValue).add("1")})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
 			})
 
       it("Emits an event upon minting", async () => {
@@ -304,7 +300,7 @@ const { calculateRedemption } = require("../utils");
       });
 
 
-      it.only("Redeems correctly when one user has all the SDUSD and the price of ETH 4x's", async () => {
+      it("Redeems correctly when one user has all the SDUSD and the price of ETH 4x's", async () => {
 
         const updatedEthPrice = 8000;
 
@@ -356,41 +352,74 @@ const { calculateRedemption } = require("../utils");
 
       })
 
-      it("Redeems correctly", async () => {
-        const degredationThreshold = 400;
-        
+      it("Mints correctly for four minters", async () => {
 
-        const ethBalance0 = await ethers.provider.getBalance(deployer);
-        console.log("Deployer ETH balance before minting: ", ethBalance0.toString());
+        // Step 1: Seed contract with ETH
+				const transactionHash = await eric.sendTransaction({
+          to: sdusdFromDeployer.address,
+          value: initialAmtBig // 1,000 ETH
+        });
+        await transactionHash.wait(1);
 
-
-        const mintTx2 = await sdusdFromAdam.mintSDUSD({ value: "333333333333333333"});
+        // Step 2: Have each person mint their respective amounts
+        const mintTx0 = await sdusdFromAdam.mintSDUSD({ value: sendValueBig_0});
+        await mintTx0.wait(1);
+        const mintTx1 = await sdusdFromBob.mintSDUSD({ value: sendValueBig_1});
+        await mintTx1.wait(1);
+        const mintTx2 = await sdusdFromCathy.mintSDUSD({ value: sendValueBig_2});
         await mintTx2.wait(1);
+        const mintTx3 = await sdusdFromDana.mintSDUSD({ value: sendValueBig_3});
+        await mintTx3.wait(1);
 
-        // Drop ETH price to $500
-        const tx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits("100", 8));
-        await tx.wait(1);
 
-        // Get SDUSD balance of user
-        const balanceResponse = await sdusdFromDeployer.balanceOf(deployer);
-        const balanceResponse2 = await sdusdFromDeployer.balanceOf(adam.address);
+        // Step 3: Get SDUSD balance of each user
+        const balanceResponse0 = await sdusdFromDeployer.balanceOf(adam.address);
+        const balanceResponse1 = await sdusdFromDeployer.balanceOf(bob.address);
+        const balanceResponse2 = await sdusdFromDeployer.balanceOf(cathy.address);
+        const balanceResponse3 = await sdusdFromDeployer.balanceOf(dana.address);
 
-        const ethBalance1 = await ethers.provider.getBalance(deployer);
-        console.log("Deployer ETH balance after minting: ", ethBalance1.toString());
+        const balance0 = balanceResponse0.div(dividedByValue);
+        const balance1 = balanceResponse1.div(dividedByValue);
+        const balance2 = balanceResponse2.div(dividedByValue);
+        const balance3 = balanceResponse3.div(dividedByValue);
 
-        // Redeem full SDUSD amount
-        // const redeemTx = await sdusdFromDeployer.calculateRedemption(balanceResponse);
-        // await redeemTx.wait(1);
+        // Step 4: Get comparable values for each user
+        const compare0 = (parseInt(sendValueBig_0) / 1e18) * (parseInt(INITIAL_PRICE) / 1e8);
+        const compare1 = (parseInt(sendValueBig_1) / 1e18) * (parseInt(INITIAL_PRICE) / 1e8);
+        const compare2 = (parseInt(sendValueBig_2) / 1e18) * (parseInt(INITIAL_PRICE) / 1e8);
+        const compare3 = parseInt((parseInt(sendValueBig_3) / 1e18) * (parseInt(INITIAL_PRICE) / 1e8)); // double parseInt because this number would have decimals because it's 8.3 ETH worth (all the rest are whole numbers of ETH)
 
-        console.log("redemptionAmtInWei : ", redeemTx.toString());
+        // Step 4: Check their balance against what it should be
+        assert.equal(balance0.toString(), compare0.toString());
+        assert.equal(balance1.toString(), compare1.toString());
+        assert.equal(balance2.toString(), compare2.toString());
+        assert.equal(balance3.toString(), compare3.toString());
 
-        // // Check balance of SDUSD contract after redemption
-        // const ethBalance2 = await ethers.provider.getBalance(deployer);
-        // console.log("Deployer ETH balance after redemption: ", ethBalance2.toString());
-        // console.log("Total ETH gotten back : ", parseInt(ethBalance2) - parseInt(ethBalance1));
-        // expect(parseInt(ethBalance)).to.be.greaterThan(parseInt(initialAmt));
+        // Step 5: Check that it rejects any additional minting (between the four minters, it has minted the maxAmount)
+        await expect(sdusdFromDeployer.mintSDUSD({value: "1"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable");
+      })
 
-        assert.equal(ethBalanceStart.toString(), ethBalanceStart2.toString());
+      it.only("Correctly calculates maxMintable with multiple minters", async () => {
+        // Step 1: Seed contract with ETH
+				const fundContractTx = await eric.sendTransaction({
+          to: sdusdFromDeployer.address,
+          value: initialAmtBig.toString() // 1,000 ETH
+        });
+        await fundContractTx.wait(1);
+
+        // Step 2: Get maxMintable amount from contract and then mint that amount
+        const ethBalOfSdusd = await ethers.provider.getBalance(sdusdFromDeployer.address);
+        const maxMintable = await sdusdFromDeployer.calculateMaxMintable(ethBalOfSdusd.toString());
+        
+        const mintSdusdTx = await sdusdFromAdam.mintSDUSD({ value: maxMintable[0].toString()});
+        await mintSdusdTx.wait(1);
+
+        // Step 3: Get new maxMintable amount (should be 0)
+        const ethBalanceOfSdusdAfterMint = await ethers.provider.getBalance(sdusdFromDeployer.address);
+        const maxMintable2 = await sdusdFromDeployer.calculateMaxMintable(ethBalanceOfSdusdAfterMint.toString());
+
+        assert.equal(maxMintable2[0].toString(), "0");
+        await expect(sdusdFromBob.mintSDUSD({value: "1"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable");
 
       })
     })

@@ -237,9 +237,12 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
     // Get the latest ETH price from the Chainlink oracle
     uint256 ethPrice = getPrice();
 
-    uint256 maxAmountInEth = ((100 * ethPrice * _adjustedBalance) - (s_ethCollateralRatio * totalSupply())) / (ethPrice * (s_ethCollateralRatio - 100));
-    
+    // uint256 maxAmountInEth = ((100 * ethPrice * _adjustedBalance) - (s_ethCollateralRatio * totalSupply())) / (ethPrice * (s_ethCollateralRatio - 100));
+    uint256 maxAmountInEth = ((100 * (ethPrice / 1e18) * _adjustedBalance) - (s_ethCollateralRatio * totalSupply())) / ((ethPrice / 1e18) * (s_ethCollateralRatio - 100));
+
     return (maxAmountInEth, ethPrice);
+    // -444444444444444443999
+    // -444444444444444399999
 
   }
 
