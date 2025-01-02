@@ -22,7 +22,7 @@ error SDUSD__OutOfRange();
 contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
   // ERC-20 variables
-  uint256 private s_ethCollateralRatio; // if 4, then if there's $4,000 worth of ETH, then 1,000 SDUSD can be minted
+  uint256 private s_ethCollateralRatio; // if 4, then ETH value in dollars must be at least 4x the total SDUSD supply in order for new SDUSD to be mintable
   uint256 private s_degredationThreshold; // collateralRatio at which redemptions begin to degrade (1.5)
 
   // Chainlink variables
@@ -102,6 +102,7 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
     }
   }
 
+  /** Utility functions */
 
   // returns amountUserGetsInWei
   // _amount is amount of sdusd being redeemed
@@ -147,7 +148,7 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
      * However, instead of doing the simpler: ((ethPrice) * address(this).balance) / totalSupply() <- startingCollateralRatio
      * We do the slightly more complex endingCollateralRatio, because if the startingCollateralRatio < degredationThreshold, we can use this number without having to do almost the exact same calculation
      * This is a design choice but in the long run would result in lower gas if the collateral ratio falls below the degredation threshold
-     * Finally, we divide by 1e20 (instead of 1e18) because s_degredationThreshold has 2 decimal points, so we retain those decimal points by dividing by 1e20
+     * Finally, we divide the denomenator by 1e20 (instead of 1e18) because it will make the denomenator have 2 fewer digits, which in turn enables s_degredationThreshold to have 3 digits instead of 1
      */
     int256 endingCollateralRatio = ((ethPrice * balance / 1e36) - (amount / 1e18)) / ((totalSupply - amount) / 1e20);
 
@@ -165,7 +166,7 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
     // We are using the quadratic equation: redemptionRate = (-B ± sqrt(B^2 - 4AC)) / 2A
     // Here are the following variables and how they correspond to the variables listed above (see docs for full explanation):
     // A: d * (u - a)
-    // B: u
+    // B: a
     // C: (-p * b)
 
     // We'll define A separately, since it is a little complex
@@ -185,13 +186,14 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
     uint256 sqrtResponse = sqrt(quadraticSqrtValueBefore_new);
 
     int256 quadraticSqrtValueAfter = int256(sqrtResponse * 1e18);
+
+    // return quadraticSqrtValueAfter;
     
     // The quadratic equation uses ±, so we could calculate the equation twice, once using the + and once using the -
     // NOTE: However, the + version will always be positive and the - version will always be negative, making the two caluclations redundant
     // Therefore, we will do only the + calculation
     // Finally, we want the redemption rate to go to the ten-thousandth of a percent. Therefore we multiply the denominator not by 1e18, but by 1e14, so that we get a four-digit number and therefore four decimal points
     int256 redemptionRate = (-amount + quadraticSqrtValueAfter) / (2 * quadraticA * 1e14);
-    // 2377
 
     // Sanity check. This should never fire.
     if (redemptionRate <= 0) {
@@ -201,13 +203,10 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
     return (amount * redemptionRate * 1e14) / ethPrice; // should be wei amount
   }
 
-
-
-  /** Utility functions */
-
   /**
   * @notice this function calculates the maximum amount of SDUSD mintable (including a new deposit)
   * @dev essentially this works in the following way
+  * @param _adjustedBalance ethBalance of contract not including any eth sent in the current transaction
   * 
   * Use the following variables:
   * b: address(this).balance
@@ -237,12 +236,12 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
     // Get the latest ETH price from the Chainlink oracle
     uint256 ethPrice = getPrice();
 
-    // uint256 maxAmountInEth = ((100 * ethPrice * _adjustedBalance) - (s_ethCollateralRatio * totalSupply())) / (ethPrice * (s_ethCollateralRatio - 100));
-    uint256 maxAmountInEth = ((100 * (ethPrice / 1e18) * _adjustedBalance) - (s_ethCollateralRatio * totalSupply())) / ((ethPrice / 1e18) * (s_ethCollateralRatio - 100));
+    // Equation is: ((100 * (ethPrice / 1e18) * _adjustedBalance) - (s_ethCollateralRatio * totalSupply())) / ((ethPrice / 1e18) * (s_ethCollateralRatio - 100))
+    // We check that the first value of the numerator is > the second value of the numerator (since the numerator is A - B), to make sure that the entire equation evaluates to > 0 (denominator will always be > 0), because this is a uint256 and can't be negative
+    // If first value of numerator is < second value of numerator, we simply make maxAmountInEth = 0
+    uint256 maxAmountInEth = (100 * (ethPrice / 1e18) * _adjustedBalance) > (s_ethCollateralRatio * totalSupply()) ? ((100 * (ethPrice / 1e18) * _adjustedBalance) - (s_ethCollateralRatio * totalSupply())) / ((ethPrice / 1e18) * (s_ethCollateralRatio - 100)) : 0;
 
     return (maxAmountInEth, ethPrice);
-    // -444444444444444443999
-    // -444444444444444399999
 
   }
 
@@ -293,6 +292,9 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
 	// Changes degredationThreshold
   function changeDegeadationThreshold(uint256 newValue) public onlyOwner {
+    if (newValue <= 0 || newValue >= 999) {
+      revert SDUSD__OutOfRange();
+    }
     s_degredationThreshold = newValue;
     emit DegredationThresholdChanged(newValue);
   }

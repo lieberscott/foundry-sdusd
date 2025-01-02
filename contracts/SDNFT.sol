@@ -28,7 +28,7 @@ contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 cont
   }
 
 
-  function buyRegularNft() external payable {
+  function buyNft() external payable {
     require(msg.value >= price, "Not enough ETH");
     require(counter < 10000, "Sold out");
     
@@ -66,19 +66,6 @@ contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 cont
     (bool success, ) = address(sdusdTokenAddress).call{value: address(this).balance}("");
     require(success, "Failed to forward ETH to SDUSD contract");
   }
-
-
-  // Override transfer functions to restrict NON_TRANSFERABLE_NFT_ID
-  // function safeTransferFrom(
-  //     address from,
-  //     address to,
-  //     uint256 id,
-  //     uint256 amount,
-  //     bytes memory data
-  // ) public override {
-  //     require(id != NON_TRANSFERABLE_NFT_ID, "Non-transferable NFT cannot be transferred");
-  //     super.safeTransferFrom(from, to, id, amount, data);
-  // }
 
 
   // The following functions are overrides required by Solidity.
