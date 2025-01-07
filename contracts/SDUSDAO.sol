@@ -16,26 +16,36 @@ import "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol
 import "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorVotesQuorumFraction.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
-// import { SDUSD } from "./SDUSD.sol";
+import "./SDUSD.sol";
+import "./SDNFT.sol";
 
 
 contract SDUSDAO is Governor, GovernorSettings, GovernorCountingSimple, GovernorVotes, GovernorVotesQuorumFraction, GovernorTimelockControl {
 	
 	uint256 public mintingThreshold = 4; // ethInUsd:SDUSD ratio threshold above which SDUSD still can be minted
 	uint256 public degredationThreshold = 2; // ethInUsd:SDUSD ratio threshold below which SDUSD redemptions are reduced below 1:1	
-	
+
+	SDUSD public sdusd;
+  SDNFT public votingNFT;
+
+
 	constructor(
     IVotes _token,
     TimelockController _timelock,
     uint256 _quorumPercentage,
-    uint256 _votingPowerThreshold
+    uint256 _votingPowerThreshold,
+    SDUSD _sdusd,
+    SDNFT _votingNFT
   )
 		Governor("SDUSDAO")
 		GovernorSettings(7200, 5400, _votingPowerThreshold)
 		GovernorVotes(_token)
 		GovernorVotesQuorumFraction(_quorumPercentage)
 		GovernorTimelockControl(_timelock)
-	{ }
+	{
+    sdusd = _sdusd;
+    votingNFT = _votingNFT;
+  }
 
 
 
@@ -130,9 +140,24 @@ contract SDUSDAO is Governor, GovernorSettings, GovernorCountingSimple, Governor
 
   /** CHAT-GPT CODE */
 
-//   function _ownsNFT(address _owner) internal view returns (bool) {
-//       GovernanceNFT governanceNFT = GovernanceNFT(i_governanceNFTAddress);
-//       return governanceNFT.balanceOf(_owner) > 0;
-//   }
+// Override voting power calculation to combine ERC20 and ERC721 votes
+  function _getVotes(
+    address account,
+    uint256 blockNumber,
+    bytes memory /*params*/
+  ) internal view override(Governor, GovernorVotes) returns (uint256) {
+    uint256 sdusdVotes = sdusd.getPastVotes(account, blockNumber) / 1e18;
+    uint256 nftVotes = votingNFT.getPastVotes(account, blockNumber) * 10000; // 10,000 votes per NFT
+    return sdusdVotes + nftVotes;
+  }
+
+  /* DELETE THIS FOR PRODUCTION */
+  function testGetVotes(
+    address account,
+    uint256 blockNumber
+  ) external view returns (uint256) {
+      return _getVotes(account, blockNumber, "");
+  }
+
 
 }

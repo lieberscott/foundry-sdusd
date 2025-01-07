@@ -4,27 +4,9 @@ const { developmentChains } = require("../../utils/helper-hardhat-config");
 const { DEGREDATION_THRESHOLD, COLLATERAL_RATIO, SDUSD_NAME, SDUSD_SYMBOL, INITIAL_PRICE } = require("../../utils/helper-hardhat-config");
 const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
-/**
- * 
- * 1. Before testing, change the calculateRedemption function in the SDUSD.sol contract from internal to public
- * 2. After testing, change it back to internal
- * 
- * 
- * 
- * 
- */
-
-
-/**
- * 
- * it("Correctly calculates maxMintable when the price of Eth changes")
- * it("Correctly redeems for multiple users when the price of Eth changes")
- * 
- */
-
 !developmentChains.includes(network.name)
 	? describe.skip
-	: describe("SDUSD", function () {
+	: describe("SDNFT", function () {
 
     let deployer;
     let adam;
@@ -32,14 +14,14 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
     let cathy;
     let dana;
     let eric;
-		let sdusdFromDeployer;
-    let sdusdFromAdam;
-    let sdusdFromBob;
-    let sdusdFromCathy;
-    let sdusdFromDana;
-    let sdusdContract;
+		let sdnftFromDeployer;
+    let sdnftFromAdam;
+    let sdnftFromBob;
+    let sdnftFromCathy;
+    let sdnftFromDana;
+    let sdnftContract;
 		let mockV3Aggregator;
-		const sendValue = "1000000000000000000"; // 1 ETH with 18 zeros
+		const sendValue = "100000000000000000"; // 0.1 ETH with 18 zeros
     const initialAmt = "4000000000000000000"; // 4 ETH with 18 zeros
     const maxMintableValue = "1333333333333333333"; // 1.333... ETH, when there is 4 ETH in the contract and 0 SDUSD minted
     const startingBalances = ethers.BigNumber.from("10000").mul(sendValue);
@@ -63,7 +45,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
 
 		beforeEach(async () => {
-			const accounts = await ethers.getSigners();
+			const accounts = await ethers.getSigners()
 			// deployer = accounts[0]
 			deployer = (await getNamedAccounts()).deployer;
       adam = accounts[1];
@@ -73,136 +55,113 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
       eric = accounts[5];
 
 			await deployments.fixture(["all"]);
-			sdusdFromDeployer = await ethers.getContract("SDUSD", deployer);
-      sdusdFromAdam = await ethers.getContract("SDUSD", adam.address);
-      sdusdFromBob = await ethers.getContract("SDUSD", bob.address);
-      sdusdFromCathy = await ethers.getContract("SDUSD", cathy.address);
-      sdusdFromDana = await ethers.getContract("SDUSD", dana.address);
-      sdusdFromEric = await ethers.getContract("SDUSD", eric.address);
-      // sdusdContract = await ethers.getContractFactory("SDUSD");
+			sdnftFromDeployer = await ethers.getContract("SDNFT", deployer);
+      sdnftFromAdam = await ethers.getContract("SDNFT", adam.address);
+      sdnftFromBob = await ethers.getContract("SDNFT", bob.address);
+      sdnftFromCathy = await ethers.getContract("SDNFT", cathy.address);
+      sdnftFromDana = await ethers.getContract("SDNFT", dana.address);
+      sdnftFromEric = await ethers.getContract("SDNFT", eric.address);
+      // sdnftContract = await ethers.getContractFactory("SDNFT");
 			mockV3Aggregator = await ethers.getContract("MockV3Aggregator", deployer);
       // console.log("mockV3Aggregator : ", mockV3Aggregator);
 		})
 
 		describe("constructor", function () {
-			it("sets the aggregator addresses correctly", async () => {
-				const response = await sdusdFromDeployer.getPriceFeed();
-				assert.equal(response, mockV3Aggregator.address)
+			it("sets the SDNFT symbol correctly", async () => {
+				const response = await sdnftFromDeployer.getSymbol();
+				assert.equal(response.toString(), "SDNFT");
 			})
-
-			it("sets the degredationThreshold  correctly", async () => {
-				const response = await sdusdFromDeployer.getDegredationThreshold();
-				assert.equal(response, DEGREDATION_THRESHOLD);
-			})
-
-			it("sets the collateralRatio correctly", async () => {
-				const response = await sdusdFromDeployer.getEthCollateralRatio();
-				assert.equal(response, COLLATERAL_RATIO);
-			})
-
-      it("initializes the token with the correct name and symbol ", async () => {
-        const name = (await sdusdFromDeployer.name()).toString()
-        assert.equal(name, SDUSD_NAME)
-
-        const symbol = (await sdusdFromDeployer.symbol()).toString()
-        assert.equal(symbol, SDUSD_SYMBOL)
-      })
-
-      it("has 18 decimals", async() => {
-        const decimals = await sdusdFromDeployer.decimals();
-        assert.equal(decimals, 18);
-      })
 
 
 		})
 
-		describe("mintSDUSD", function () {
+		describe("mintSDNFT", function () {
 			// https://ethereum-waffle.readthedocs.io/en/latest/matchers.html
 			// could also do assert.fail
-			it("Fails to mint SDUSD if there's no ETH in the contract", async () => {
-				await expect(sdusdFromDeployer.mintSDUSD({value: sendValue})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
+			it("Fails to mint an NFT if there's no ETH sent", async () => {
+				await expect(sdnftFromDeployer.buyNft()).to.be.revertedWith("SDNFT__NotEnoughETH");
 			})
 
       it("Correctly calculates maxMintable with no ETH in it", async () => {
         const transactionHash = await adam.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt // 4 ETH
         });
 
         await transactionHash.wait(1);
 
-        const response = await sdusdFromDeployer.calculateMaxMintable(initialAmt);
+        const response = await sdnftFromDeployer.calculateMaxMintable(initialAmt);
 
         assert.equal(response[0].toString(), maxMintableValue);
 			})
 
       it("Mints 1.3 ETH worth of SDUSD after it has 4ETH in it", async () => {
         const transactionHash = await adam.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt // 4 ETH
         });
 
         await transactionHash.wait(1);
 
-        const mintTx = await sdusdFromDeployer.mintSDUSD({value: maxMintableValue});
+        const mintTx = await sdnftFromDeployer.mintSDUSD({value: maxMintableValue});
 
         await mintTx.wait(1);
 
-        const balanceResponse = await sdusdFromDeployer.balanceOf(deployer);
-        const mintedResponse = await sdusdFromDeployer.totalSupply();
+        const balanceResponse = await sdnftFromDeployer.balanceOf(deployer);
+        const mintedResponse = await sdnftFromDeployer.totalSupply();
 
         // console.log("balanceResponse : ", balanceResponse.toString());
 
-        const sdusdBalance = ethers.utils.formatUnits(balanceResponse, 18); // user amount as stored by the ERC20 contract
-        const sdusdMinted = ethers.utils.formatUnits(mintedResponse); // total supply of SDUSD
+        const sdnftBalance = ethers.utils.formatUnits(balanceResponse, 18); // user amount as stored by the ERC20 contract
+        const sdnftMinted = ethers.utils.formatUnits(mintedResponse); // total supply of SDUSD
 
-        assert.equal(sdusdBalance, "2666.666666666666666");
-        assert.equal(sdusdMinted, "2666.666666666666666");
+        assert.equal(sdnftBalance, "2666.666666666666666");
+        assert.equal(sdnftMinted, "2666.666666666666666");
 			})
 
       it("Rejects maxMintable + 1", async () => {
         const sendTx = await adam.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt // 4 ETH
         });
 
-        await expect(sdusdFromDeployer.mintSDUSD({value: ethers.BigNumber.from(maxMintableValue).add("1")})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
+        await expect(sdnftFromDeployer.mintSDUSD({value: ethers.BigNumber.from(maxMintableValue).add("1")})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable")
 			})
 
       it("Emits an event upon minting", async () => {
         const sendTx = await adam.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt // 4 ETH
         });
 
-        await expect(sdusdFromDeployer.mintSDUSD({ value: maxMintableValue })).to.emit(sdusdFromDeployer, "sdusdMinted");
+        await expect(sdnftFromDeployer.mintSDUSD({ value: maxMintableValue })).to.emit(sdnftFromDeployer, "sdnftMinted");
 			});
 
       it("Mints correctly for four minters when the price of ETh doesn't change", async () => {
 
         // Step 1: Seed contract with ETH
 				const transactionHash = await eric.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmtBig // 1,000 ETH
         });
         await transactionHash.wait(1);
 
         // Step 2: Have each person mint their respective amounts
-        const mintTx0 = await sdusdFromAdam.mintSDUSD({ value: sendValueBig_0});
+        const mintTx0 = await sdnftFromAdam.mintSDUSD({ value: sendValueBig_0});
         await mintTx0.wait(1);
-        const mintTx1 = await sdusdFromBob.mintSDUSD({ value: sendValueBig_1});
+        const mintTx1 = await sdnftFromBob.mintSDUSD({ value: sendValueBig_1});
         await mintTx1.wait(1);
-        const mintTx2 = await sdusdFromCathy.mintSDUSD({ value: sendValueBig_2});
+        const mintTx2 = await sdnftFromCathy.mintSDUSD({ value: sendValueBig_2});
         await mintTx2.wait(1);
-        const mintTx3 = await sdusdFromDana.mintSDUSD({ value: sendValueBig_3});
+        const mintTx3 = await sdnftFromDana.mintSDUSD({ value: sendValueBig_3});
         await mintTx3.wait(1);
 
 
         // Step 3: Get SDUSD balance of each user
-        const balanceResponse0 = await sdusdFromDeployer.balanceOf(adam.address);
-        const balanceResponse1 = await sdusdFromDeployer.balanceOf(bob.address);
-        const balanceResponse2 = await sdusdFromDeployer.balanceOf(cathy.address);
-        const balanceResponse3 = await sdusdFromDeployer.balanceOf(dana.address);
+        const balanceResponse0 = await sdnftFromDeployer.balanceOf(adam.address);
+        const balanceResponse1 = await sdnftFromDeployer.balanceOf(bob.address);
+        const balanceResponse2 = await sdnftFromDeployer.balanceOf(cathy.address);
+        const balanceResponse3 = await sdnftFromDeployer.balanceOf(dana.address);
 
         const balance0 = balanceResponse0.div(dividedByValue);
         const balance1 = balanceResponse1.div(dividedByValue);
@@ -222,30 +181,30 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         assert.equal(balance3.toString(), compare3.toString());
 
         // Step 5: Check that it rejects any additional minting (between the four minters, it has minted the maxAmount)
-        await expect(sdusdFromDeployer.mintSDUSD({value: "1"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable");
+        await expect(sdnftFromDeployer.mintSDUSD({value: "1"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable");
       })
 
       it("Correctly calculates maxMintable with multiple minters when the price of ETH doesn't change", async () => {
         // Step 1: Seed contract with ETH
 				const fundContractTx = await eric.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmtBig.toString() // 1,000 ETH
         });
         await fundContractTx.wait(1);
 
         // Step 2: Get maxMintable amount from contract and then mint that amount
-        const ethBalOfSdusd = await ethers.provider.getBalance(sdusdFromDeployer.address);
-        const maxMintable = await sdusdFromDeployer.calculateMaxMintable(ethBalOfSdusd.toString());
+        const ethBalOfSdusd = await ethers.provider.getBalance(sdnftFromDeployer.address);
+        const maxMintable = await sdnftFromDeployer.calculateMaxMintable(ethBalOfSdusd.toString());
         
-        const mintSdusdTx = await sdusdFromAdam.mintSDUSD({ value: maxMintable[0].toString()});
+        const mintSdusdTx = await sdnftFromAdam.mintSDUSD({ value: maxMintable[0].toString()});
         await mintSdusdTx.wait(1);
 
         // Step 3: Get new maxMintable amount (should be 0)
-        const ethBalanceOfSdusdAfterMint = await ethers.provider.getBalance(sdusdFromDeployer.address);
-        const maxMintable2 = await sdusdFromDeployer.calculateMaxMintable(ethBalanceOfSdusdAfterMint.toString());
+        const ethBalanceOfSdusdAfterMint = await ethers.provider.getBalance(sdnftFromDeployer.address);
+        const maxMintable2 = await sdnftFromDeployer.calculateMaxMintable(ethBalanceOfSdusdAfterMint.toString());
 
         assert.equal(maxMintable2[0].toString(), "0");
-        await expect(sdusdFromBob.mintSDUSD({value: "1"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable");
+        await expect(sdnftFromBob.mintSDUSD({value: "1"})).to.be.revertedWith("SDUSD__ExceedsMaxAmountMintable");
 
       })
 
@@ -256,13 +215,13 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Step 1: Seed contract with 16 ETH
 				const transactionHash = await bob.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: ethers.BigNumber.from(initialAmt).mul("4").toString() // 16 ETH
         });
         await transactionHash.wait(1);
 
         // Step 2: Mint 0.25 ETH worth ($500)
-        const mintTx = await sdusdFromAdam.mintSDUSD({value: sendValue });
+        const mintTx = await sdnftFromAdam.mintSDUSD({value: sendValue });
         await mintTx.wait(1);
 
         // Step 3: Drop ETH price 75%
@@ -272,7 +231,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         // Step 4: Get maxMintable
         const ethBalance = ethers.BigNumber.from(initialAmt).mul("4").add(sendValue).toString();
         
-        const maxMintable = await sdusdFromDeployer.calculateMaxMintable(ethBalance);
+        const maxMintable = await sdnftFromDeployer.calculateMaxMintable(ethBalance);
         assert.equal(maxMintable[0].toString(), ethers.BigNumber.from(maxMintableValue).sub(sendValue).toString());
         
       });
@@ -281,13 +240,13 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Step 1: Seed contract with 4 ETH
 				const transactionHash = await bob.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt
         });
         await transactionHash.wait(1);
 
         // Step 2: Mint maxMintable (1.3333 ETH)
-        const mintTx = await sdusdFromAdam.mintSDUSD({value: maxMintableValue });
+        const mintTx = await sdnftFromAdam.mintSDUSD({value: maxMintableValue });
         await mintTx.wait(1);
 
         // Step 3: Drop ETH price 95%
@@ -297,7 +256,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         // Step 4: Get maxMintable
         const ethBalance = ethers.BigNumber.from(initialAmt).add(sendValue).toString();
         
-        const maxMintable = await sdusdFromDeployer.calculateMaxMintable(ethBalance);
+        const maxMintable = await sdnftFromDeployer.calculateMaxMintable(ethBalance);
         assert.equal(maxMintable[0].toString(), "0");
         
       });
@@ -309,30 +268,30 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
       const oneThousand = "1000";
 
 			it("Rejects when user redeems more SDUSD than he has", async () => {
-				await expect(sdusdFromDeployer.redeemSdusdForEth(oneThousand)).to.be.revertedWith("SDUSD__WithdrawalAmountLargerThanUserBalance")
+				await expect(sdnftFromDeployer.redeemSdusdForEth(oneThousand)).to.be.revertedWith("SDUSD__WithdrawalAmountLargerThanUserBalance")
 			})
 
       it("Redeems SDUSD correctly when price of ETH does not change", async () => {
         // Send initial ETH
 				const transactionHash = await adam.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt // 4 ETH
         });
         await transactionHash.wait(1);
 
         // Mint SDUSD
-        const mintTx = await sdusdFromDeployer.mintSDUSD({value: maxMintableValue});
+        const mintTx = await sdnftFromDeployer.mintSDUSD({value: maxMintableValue});
         await mintTx.wait(1);
 
         // Get SDUSD balance of user
-        const balanceResponse = await sdusdFromDeployer.balanceOf(deployer);
+        const balanceResponse = await sdnftFromDeployer.balanceOf(deployer);
 
         // Redeem full SDUSD amount
-        const redeemTx = await sdusdFromDeployer.redeemSdusdForEth(balanceResponse);
+        const redeemTx = await sdnftFromDeployer.redeemSdusdForEth(balanceResponse);
         await redeemTx.wait(1);
 
         // Check balance of SDUSD contract after redemption
-        const ethBalance = await ethers.provider.getBalance(sdusdFromDeployer.address);
+        const ethBalance = await ethers.provider.getBalance(sdnftFromDeployer.address);
         assert.equal(ethBalance.toString(), initialAmt);
         
 			})
@@ -350,13 +309,13 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Step 1: Seed contract with ETH
 				const transactionHash = await bob.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt // 4 ETH
         });
         await transactionHash.wait(1);
 
         // Step 2: Mint SDUSD to one person
-        const mintTx = await sdusdFromAdam.mintSDUSD({value: sendValue});
+        const mintTx = await sdnftFromAdam.mintSDUSD({value: sendValue});
         const mintTxReceipt = await mintTx.wait(1);
 
         const gasUsed1 = mintTxReceipt.gasUsed;
@@ -364,14 +323,14 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const gasCost1 = gasUsed1.mul(effectiveGasPrice1);
 
         // Step 3: Get supply of SDUSD
-        const supply = (await sdusdFromDeployer.totalSupply()).toString();
+        const supply = (await sdnftFromDeployer.totalSupply()).toString();
 
         // Step 4: Get the user supply of SDUSD
-        const userSdusdSupplyTx = await sdusdFromAdam.balanceOf(adam.address);
+        const userSdusdSupplyTx = await sdnftFromAdam.balanceOf(adam.address);
         const userSdusdSupply = userSdusdSupplyTx.toString();
 
         // Step 5: Redeem SDUSD
-        const redeemTx = await sdusdFromAdam.redeemSdusdForEth(userSdusdSupply);
+        const redeemTx = await sdnftFromAdam.redeemSdusdForEth(userSdusdSupply);
         const redeemTxReceipt = await redeemTx.wait(1);
         const amount = redeemTx.toString();
 
@@ -393,13 +352,13 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Step 1: Seed contract with ETH
 				const transactionHash = await bob.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt // 4 ETH
         });
         await transactionHash.wait(1);
 
         // Step 2: Mint SDUSD to one person
-        const mintTx = await sdusdFromAdam.mintSDUSD({value: sendValue});
+        const mintTx = await sdnftFromAdam.mintSDUSD({value: sendValue});
         const mintTxReceipt = await mintTx.wait(1);
 
         const gasUsed1 = mintTxReceipt.gasUsed;
@@ -411,14 +370,14 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         await tx.wait(1);
 
         // Step 4: Get supply of SDUSD
-        const totalSupply = (await sdusdFromDeployer.totalSupply()).toString();
+        const totalSupply = (await sdnftFromDeployer.totalSupply()).toString();
         
         // Step 4A: Get the user supply of SDUSD
-        const userSdusdSupplyTx = await sdusdFromAdam.balanceOf(adam.address);
+        const userSdusdSupplyTx = await sdnftFromAdam.balanceOf(adam.address);
         const userSdusdSupply = userSdusdSupplyTx.toString();
 
         // Step 5: Redeem SDUSD
-        const redeemTx = await sdusdFromAdam.redeemSdusdForEth(userSdusdSupply);
+        const redeemTx = await sdnftFromAdam.redeemSdusdForEth(userSdusdSupply);
         const redeemTxReceipt = await redeemTx.wait(1);
 
         const gasUsed2 = redeemTxReceipt.gasUsed;
@@ -440,13 +399,13 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Step 1: Seed contract with ETH
 				const transactionHash = await bob.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt // 4 ETH
         });
         await transactionHash.wait(1);
 
         // Step 2: Mint SDUSD to one person
-        const mintTx = await sdusdFromAdam.mintSDUSD({value: sendValue});
+        const mintTx = await sdnftFromAdam.mintSDUSD({value: sendValue});
         const mintTxReceipt = await mintTx.wait(1);
 
         const gasUsed1 = mintTxReceipt.gasUsed;
@@ -458,14 +417,14 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         await tx.wait(1);
 
         // Step 4: Get supply of SDUSD
-        const supply = (await sdusdFromDeployer.totalSupply()).toString();
+        const supply = (await sdnftFromDeployer.totalSupply()).toString();
 
         // Step 4A: Get the user supply of SDUSD
-        const userSdusdSupplyTx = await sdusdFromAdam.balanceOf(adam.address);
+        const userSdusdSupplyTx = await sdnftFromAdam.balanceOf(adam.address);
         const userSdusdSupply = userSdusdSupplyTx.toString();
 
         // Step 5: Redeem SDUSD
-        const redeemTx = await sdusdFromAdam.redeemSdusdForEth(userSdusdSupply);
+        const redeemTx = await sdnftFromAdam.redeemSdusdForEth(userSdusdSupply);
         const redeemTxReceipt = await redeemTx.wait(1);
 
         const gasUsed2 = redeemTxReceipt.gasUsed;
@@ -490,13 +449,13 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Step 1: Seed contract with ETH
 				const transactionHash = await bob.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: initialAmt // 4 ETH
         });
         await transactionHash.wait(1);
 
         // Step 2: Mint SDUSD to one person
-        const mintTx = await sdusdFromAdam.mintSDUSD({value: sendValue});
+        const mintTx = await sdnftFromAdam.mintSDUSD({value: sendValue});
         const mintTxReceipt = await mintTx.wait(1);
 
         const gasUsed1 = mintTxReceipt.gasUsed;
@@ -508,14 +467,14 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         await tx.wait(1);
 
         // Step 4: Get supply of SDUSD
-        const supply = await sdusdFromDeployer.totalSupply();
+        const supply = await sdnftFromDeployer.totalSupply();
 
         // Step 4A: Get the user supply of SDUSD
-        const userSdusdSupplyTx = await sdusdFromAdam.balanceOf(adam.address);
+        const userSdusdSupplyTx = await sdnftFromAdam.balanceOf(adam.address);
         const userSdusdSupply = userSdusdSupplyTx.toString();
 
         // Step 5: Redeem SDUSD
-        const redeemTx = await sdusdFromAdam.redeemSdusdForEth(userSdusdSupply);
+        const redeemTx = await sdnftFromAdam.redeemSdusdForEth(userSdusdSupply);
         const redeemTxReceipt = await redeemTx.wait(1);
 
         const gasUsed2 = redeemTxReceipt.gasUsed;
@@ -549,13 +508,13 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Step 1: Seed contract with 1000 ETH
 				const transactionHash = await eric.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: ethers.BigNumber.from(initialAmtBig).toString() // 1000 ETH
         });
         await transactionHash.wait(1);
 
         // Step 2: Mint ETH for each user, changing the ETH price in between
-        const adamMintTx = await sdusdFromAdam.mintSDUSD({ value: ethers.BigNumber.from(sendValue).mul(adamMul) }); // 20 ETH ($40,000)
+        const adamMintTx = await sdnftFromAdam.mintSDUSD({ value: ethers.BigNumber.from(sendValue).mul(adamMul) }); // 20 ETH ($40,000)
         const adamMintTxReceipt = await adamMintTx.wait(1);
         const adamMintGas = adamMintTxReceipt.gasUsed;
         const adamMintGasPrice = adamMintTxReceipt.effectiveGasPrice;
@@ -563,7 +522,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         const priceTxBob = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(bobPrice, 8));
         await priceTxBob.wait(1);
-        const bobMintTx = await sdusdFromBob.mintSDUSD({ value: ethers.BigNumber.from(sendValue).mul(bobMul) }); // 20 ETH ($40,000)
+        const bobMintTx = await sdnftFromBob.mintSDUSD({ value: ethers.BigNumber.from(sendValue).mul(bobMul) }); // 20 ETH ($40,000)
         const bobMintTxReceipt = await bobMintTx.wait(1);
         const bobMintGas = bobMintTxReceipt.gasUsed;
         const bobMintGasPrice = bobMintTxReceipt.effectiveGasPrice;
@@ -571,7 +530,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         
         const priceTxCathy = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyPrice, 8));
         await priceTxCathy.wait(1);
-        const cathyMintTx = await sdusdFromCathy.mintSDUSD({ value: ethers.BigNumber.from(sendValue).mul(cathyMul) }); // 20 ETH ($40,000)
+        const cathyMintTx = await sdnftFromCathy.mintSDUSD({ value: ethers.BigNumber.from(sendValue).mul(cathyMul) }); // 20 ETH ($40,000)
         const cathyMintTxReceipt = await cathyMintTx.wait(1);
         const cathyMintGas = cathyMintTxReceipt.gasUsed;
         const cathyMintGasPrice = cathyMintTxReceipt.effectiveGasPrice;
@@ -579,7 +538,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
        
         const priceTxDana = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(danaPrice, 8));
         await priceTxDana.wait(1);
-        const danaMintTx = await sdusdFromDana.mintSDUSD({ value: ethers.BigNumber.from(sendValue).mul(danaMul) }); // 20 ETH ($40,000)
+        const danaMintTx = await sdnftFromDana.mintSDUSD({ value: ethers.BigNumber.from(sendValue).mul(danaMul) }); // 20 ETH ($40,000)
         const danaMintTxReceipt = await danaMintTx.wait(1);
         const danaMintGas = danaMintTxReceipt.gasUsed;
         const danaMintGasPrice = danaMintTxReceipt.effectiveGasPrice;
@@ -587,16 +546,16 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
 
         // Step 3: Check each user's balance is correct
-        const adamBalTx = await sdusdFromAdam.balanceOf(adam.address);
+        const adamBalTx = await sdnftFromAdam.balanceOf(adam.address);
         const adamBal = adamBalTx.toString();
 
-        const bobBalTx = await sdusdFromBob.balanceOf(bob.address);
+        const bobBalTx = await sdnftFromBob.balanceOf(bob.address);
         const bobBal = bobBalTx.toString();
 
-        const cathyBalTx = await sdusdFromCathy.balanceOf(cathy.address);
+        const cathyBalTx = await sdnftFromCathy.balanceOf(cathy.address);
         const cathyBal = cathyBalTx.toString();
 
-        const danaBalTx = await sdusdFromDana.balanceOf(dana.address);
+        const danaBalTx = await sdnftFromDana.balanceOf(dana.address);
         const danaBal = danaBalTx.toString();
 
         assert.equal(adamBal, ethers.BigNumber.from(adamPrice).mul(adamMul).mul(sendValue).toString());
@@ -613,7 +572,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         const adamRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(adamRedeemPrice, 8));
         await adamRedeemPriceTx.wait(1);
-        const adamRedeemTx = await sdusdFromAdam.redeemSdusdForEth(adamBal);
+        const adamRedeemTx = await sdnftFromAdam.redeemSdusdForEth(adamBal);
         const adamRedeemTxReceipt = await adamRedeemTx.wait(1);
         const adamRedeemGas = adamRedeemTxReceipt.gasUsed;
         const adamRedeemGasPrice = adamRedeemTxReceipt.effectiveGasPrice;
@@ -625,7 +584,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         const bobRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(bobRedeemPrice, 8));
         await bobRedeemPriceTx.wait(1);
-        const bobRedeemTx = await sdusdFromBob.redeemSdusdForEth(bobBal);
+        const bobRedeemTx = await sdnftFromBob.redeemSdusdForEth(bobBal);
         const bobRedeemTxReceipt = await bobRedeemTx.wait(1);
         const bobRedeemGas = bobRedeemTxReceipt.gasUsed;
         const bobRedeemGasPrice = bobRedeemTxReceipt.effectiveGasPrice;
@@ -637,7 +596,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         const cathyRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyRedeemPrice, 8));
         await cathyRedeemPriceTx.wait(1);
-        const cathyRedeemTx = await sdusdFromCathy.redeemSdusdForEth(cathyBal);
+        const cathyRedeemTx = await sdnftFromCathy.redeemSdusdForEth(cathyBal);
         const cathyRedeemTxReceipt = await cathyRedeemTx.wait(1);
         const cathyRedeemGas = cathyRedeemTxReceipt.gasUsed;
         const cathyRedeemGasPrice = cathyRedeemTxReceipt.effectiveGasPrice;
@@ -649,7 +608,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         const danaRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(danaRedeemPrice, 8));
         await danaRedeemPriceTx.wait(1);
-        const danaRedeemTx = await sdusdFromDana.redeemSdusdForEth(danaBal);
+        const danaRedeemTx = await sdnftFromDana.redeemSdusdForEth(danaBal);
         const danaRedeemTxReceipt = await danaRedeemTx.wait(1);
         const danaRedeemGas = danaRedeemTxReceipt.gasUsed;
         const danaRedeemGasPrice = danaRedeemTxReceipt.effectiveGasPrice;
@@ -677,13 +636,13 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Step 1: Seed contract with 16 ETH
 				const transactionHash = await eric.sendTransaction({
-          to: sdusdFromDeployer.address,
+          to: sdnftFromDeployer.address,
           value: ethers.BigNumber.from(initialAmt).mul("3").toString() // 8 ETH
         });
         await transactionHash.wait(1);
 
         // Step 2: Mint ETH for each user, changing the ETH price in between
-        const adamMintTx = await sdusdFromAdam.mintSDUSD({ value: sendValue }); // 1 ETH ($2,000)
+        const adamMintTx = await sdnftFromAdam.mintSDUSD({ value: sendValue }); // 1 ETH ($2,000)
         const adamMintTxReceipt = await adamMintTx.wait(1);
         const adamMintGas = adamMintTxReceipt.gasUsed;
         const adamMintGasPrice = adamMintTxReceipt.effectiveGasPrice;
@@ -691,7 +650,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         const priceTxBob = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(bobPrice, 8));
         await priceTxBob.wait(1);
-        const bobMintTx = await sdusdFromBob.mintSDUSD({ value: sendValue }); // 1 ETH ($3,000)
+        const bobMintTx = await sdnftFromBob.mintSDUSD({ value: sendValue }); // 1 ETH ($3,000)
         const bobMintTxReceipt = await bobMintTx.wait(1);
         const bobMintGas = bobMintTxReceipt.gasUsed;
         const bobMintGasPrice = bobMintTxReceipt.effectiveGasPrice;
@@ -699,7 +658,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         
         const priceTxCathy = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyPrice, 8));
         await priceTxCathy.wait(1);
-        const cathyMintTx = await sdusdFromCathy.mintSDUSD({ value: sendValue }); // 1 ETH ($1,500)
+        const cathyMintTx = await sdnftFromCathy.mintSDUSD({ value: sendValue }); // 1 ETH ($1,500)
         const cathyMintTxReceipt = await cathyMintTx.wait(1);
         const cathyMintGas = cathyMintTxReceipt.gasUsed;
         const cathyMintGasPrice = cathyMintTxReceipt.effectiveGasPrice;
@@ -707,7 +666,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
        
         const priceTxDana = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(danaPrice, 8));
         await priceTxDana.wait(1);
-        const danaMintTx = await sdusdFromDana.mintSDUSD({ value: sendValue }); // 1 ETH ($500)
+        const danaMintTx = await sdnftFromDana.mintSDUSD({ value: sendValue }); // 1 ETH ($500)
         const danaMintTxReceipt = await danaMintTx.wait(1);
         const danaMintGas = danaMintTxReceipt.gasUsed;
         const danaMintGasPrice = danaMintTxReceipt.effectiveGasPrice;
@@ -715,16 +674,16 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
 
         // Step 3: Check each user's balance is correct
-        const adamBalTx = await sdusdFromAdam.balanceOf(adam.address);
+        const adamBalTx = await sdnftFromAdam.balanceOf(adam.address);
         const adamBal = adamBalTx.toString();
 
-        const bobBalTx = await sdusdFromBob.balanceOf(bob.address);
+        const bobBalTx = await sdnftFromBob.balanceOf(bob.address);
         const bobBal = bobBalTx.toString();
 
-        const cathyBalTx = await sdusdFromCathy.balanceOf(cathy.address);
+        const cathyBalTx = await sdnftFromCathy.balanceOf(cathy.address);
         const cathyBal = cathyBalTx.toString();
 
-        const danaBalTx = await sdusdFromDana.balanceOf(dana.address);
+        const danaBalTx = await sdnftFromDana.balanceOf(dana.address);
         const danaBal = danaBalTx.toString();
 
         assert.equal(adamBal, ethers.BigNumber.from(adamPrice).mul(sendValue).toString());
@@ -740,8 +699,8 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const danaRedeemPrice = "300";
 
         // Calculate using JS locally for Adam
-        const adamTotalSupplySdusd = (await sdusdFromAdam.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
-        const adamSdusdEthBal = (await ethers.provider.getBalance(sdusdFromDeployer.address)).div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
+        const adamTotalSupplySdusd = (await sdnftFromAdam.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
+        const adamSdusdEthBal = (await ethers.provider.getBalance(sdnftFromDeployer.address)).div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
         const adamBalJS = adamBalTx.div(sendValue).toString(); // user's SDUSD balance
 
         const adamEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(adamTotalSupplySdusd), parseInt(adamBalJS), parseInt(adamRedeemPrice), parseInt(adamSdusdEthBal));
@@ -750,7 +709,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         // Redeem and calculate using Solidity contract
         const adamRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(adamRedeemPrice, 8));
         await adamRedeemPriceTx.wait(1);
-        const adamRedeemTx = await sdusdFromAdam.redeemSdusdForEth(adamBal);
+        const adamRedeemTx = await sdnftFromAdam.redeemSdusdForEth(adamBal);
         const adamRedeemTxReceipt = await adamRedeemTx.wait(1);
         const adamRedeemGas = adamRedeemTxReceipt.gasUsed;
         const adamRedeemGasPrice = adamRedeemTxReceipt.effectiveGasPrice;
@@ -768,8 +727,8 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const adamEthReceivedSolidityUpdated = adamEthReceivedSolidity.substring(0, adamLengthJS - 1);
 
         // Calculate using JS locally for Bob
-        const bobTotalSupplySdusd = (await sdusdFromBob.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
-        const bobSdusdEthBal0 = await ethers.provider.getBalance(sdusdFromDeployer.address); // total ETH balance of the SDUSD contract at the time this user is redeeming
+        const bobTotalSupplySdusd = (await sdnftFromBob.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
+        const bobSdusdEthBal0 = await ethers.provider.getBalance(sdnftFromDeployer.address); // total ETH balance of the SDUSD contract at the time this user is redeeming
         const bobSdusdEthBal = bobSdusdEthBal0.div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
         const bobBalJS = bobBalTx.div(sendValue).toString(); // user's SDUSD balance
         const bobEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(bobTotalSupplySdusd), parseInt(bobBalJS), parseInt(bobRedeemPrice), parseInt(bobSdusdEthBal));
@@ -779,7 +738,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const bobRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(bobRedeemPrice, 8));
         await bobRedeemPriceTx.wait(1);
 
-        const bobRedeemTx = await sdusdFromBob.redeemSdusdForEth(bobBal);
+        const bobRedeemTx = await sdnftFromBob.redeemSdusdForEth(bobBal);
         const bobRedeemTxReceipt = await bobRedeemTx.wait(1);
         const bobRedeemGas = bobRedeemTxReceipt.gasUsed;
         const bobRedeemGasPrice = bobRedeemTxReceipt.effectiveGasPrice;
@@ -795,8 +754,8 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const bobEthReceivedSolidityUpdated = bobEthReceivedSolidity.substring(0, bobLengthJS);
 
         // Calculate using JS locally for Cathy
-        const cathyTotalSupplySdusd = (await sdusdFromCathy.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
-        const cathySdusdEthBal0 = await ethers.provider.getBalance(sdusdFromDeployer.address); // total ETH balance of the SDUSD contract at the time this user is redeeming
+        const cathyTotalSupplySdusd = (await sdnftFromCathy.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
+        const cathySdusdEthBal0 = await ethers.provider.getBalance(sdnftFromDeployer.address); // total ETH balance of the SDUSD contract at the time this user is redeeming
         const cathySdusdEthBal = cathySdusdEthBal0.div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
         const cathyBalJS = cathyBalTx.div(sendValue).toString(); // user's SDUSD balance
 
@@ -807,7 +766,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         // Redeem and calculate using Solidity contract
         const cathyRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyRedeemPrice, 8));
         await cathyRedeemPriceTx.wait(1);
-        const cathyRedeemTx = await sdusdFromCathy.redeemSdusdForEth(cathyBal);
+        const cathyRedeemTx = await sdnftFromCathy.redeemSdusdForEth(cathyBal);
         const cathyRedeemTxReceipt = await cathyRedeemTx.wait(1);
         const cathyRedeemGas = cathyRedeemTxReceipt.gasUsed;
         const cathyRedeemGasPrice = cathyRedeemTxReceipt.effectiveGasPrice;
@@ -825,8 +784,8 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const cathyEthReceivedSolidityUpdated = cathyEthReceivedSolidity.substring(0, cathyLengthJS);
 
         // Calculate using JS locally for Dana
-        const danaTotalSupplySdusd = (await sdusdFromDana.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
-        const danaSdusdEthBal = (await ethers.provider.getBalance(sdusdFromDeployer.address)).div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
+        const danaTotalSupplySdusd = (await sdnftFromDana.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
+        const danaSdusdEthBal = (await ethers.provider.getBalance(sdnftFromDeployer.address)).div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
         const danaBalJS = danaBalTx.div(sendValue).toString(); // user's SDUSD balance
         const danaEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(danaTotalSupplySdusd), parseInt(danaBalJS), parseInt(danaRedeemPrice), parseInt(danaSdusdEthBal));
         const danaEthReceivedJS = danaEthReceived.toString().replace(".", ""); // 26666666666666665
@@ -834,7 +793,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         // Redeem and calculate using Solidity contract
         const danaRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(danaRedeemPrice, 8));
         await danaRedeemPriceTx.wait(1);
-        const danaRedeemTx = await sdusdFromDana.redeemSdusdForEth(danaBal);
+        const danaRedeemTx = await sdnftFromDana.redeemSdusdForEth(danaBal);
         const danaRedeemTxReceipt = await danaRedeemTx.wait(1);
         const danaRedeemGas = danaRedeemTxReceipt.gasUsed;
         const danaRedeemGasPrice = danaRedeemTxReceipt.effectiveGasPrice;

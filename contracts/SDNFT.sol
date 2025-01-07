@@ -6,11 +6,13 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Votes.sol";
 
+error SDNFT__NotEnoughETH();
+
 contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 contract extensions
 
   string public baseTokenURI;
   uint256 private price = 100000000000000000; // 0.1 ETH
-  uint256 public counter = 0; // NFTs 10000+
+  uint256 public counter = 0; // NFTs 10,000
 
   address sdusdTokenAddress;
 
@@ -29,16 +31,14 @@ contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 cont
 
 
   function buyNft() external payable {
-    require(msg.value >= price, "Not enough ETH");
+    if (msg.value < price) {
+      revert SDNFT__NotEnoughETH();
+    }
     require(counter < 10000, "Sold out");
     
     uint256 newItemId = counter;
     _safeMint(msg.sender, newItemId);
     counter++;
-
-    // add to voting power
-
-    // mint soulbound token
   }
 
 
@@ -62,7 +62,7 @@ contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 cont
 
   function forwardETHToSDUSD() internal {
     // If for some reason there is ETH that isn't transferred to SDUSD contract,
-    // this contract allows anyone to transfer the ETH Balance of this contract to the SDUSD contract
+    // this contract allows anyone to transfer the ETH balance of this contract to the SDUSD contract
     (bool success, ) = address(sdusdTokenAddress).call{value: address(this).balance}("");
     require(success, "Failed to forward ETH to SDUSD contract");
   }

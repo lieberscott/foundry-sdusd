@@ -13,9 +13,10 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
   log("Deploying SDUSDAO and waiting for confirmations...");
 
   const sdusdContract = await get("SDUSD");
+  const sdnftContract = await get("SDNFT");
   const timelockContract = await get("TimeLock");
   
-  const arguments = [sdusdContract.address, timelockContract.address, QUORUM_PERCENTAGE, VOTING_POWER_THRESHOLD];
+  const arguments = [sdusdContract.address, timelockContract.address, QUORUM_PERCENTAGE, VOTING_POWER_THRESHOLD, sdusdContract.address, sdnftContract.address];
 
   const sdusdaoDeployment = await deploy("SDUSDAO", {
     from: deployer,
