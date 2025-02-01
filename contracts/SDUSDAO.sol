@@ -5,7 +5,10 @@
 /** OPEN ZEPPELIN CODE */
 
 
-/** Will also want to add that no proposals can be made for the first year of the contract being deployed. Because then one person can buy an NFT and change everything himself */
+/** Will also want to add that no proposals can be made for the first year of the contract being deployed. Because then one person can buy an NFT and change everything himself
+ * And make sure that the quorum must include both the number of tokenholders and NFT holders
+ * 
+*/
 
 
 pragma solidity ^0.8.22;

@@ -34,6 +34,12 @@ module.exports = {
       allowUnlimitedContractSize: true
       // gasPrice: 130000000000,
     },
+    // localhost: {
+    //   chainId: 31337,
+    //   blockConfirmations: 1,
+    //   allowUnlimitedContractSize: true
+    //   // gasPrice: 130000000000,
+    // },
     sepolia: {
       url: SEPOLIA_RPC_URL,
       accounts: [PRIVATE_KEY],

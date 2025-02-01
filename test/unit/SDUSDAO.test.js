@@ -25,6 +25,8 @@ describe("SDUSDAO Contract", function () {
   let timelockFromDeployer, sdusdaoFromDeployer;
   let sdusdFromDeployer, sdnftFromDeployer, timelock, dao, daoFromDeployer;
   let deployer, adam, bob, cathy, dana, eric;
+  let sdusdFromAdam, sdusdFromBob, sdusdFromCathy, sdusdFromDana;
+  let sdnftFromAdam, sdnftFromBob, sdnftFromCathy, sdnftFromDana;
 
   const nftValue = "100000000000000000"; // 0.1 ETH
   const nftVotes = "10000"; // 10,000
@@ -46,14 +48,19 @@ describe("SDUSDAO Contract", function () {
     sdusdFromDeployer = await ethers.getContract("SDUSD", deployer);
     sdusdFromAdam = await ethers.getContract("SDUSD", adam.address);
     sdusdFromBob = await ethers.getContract("SDUSD", bob.address);
+    sdusdFromCathy = await ethers.getContract("SDUSD", cathy.address);
+    sdusdFromDana = await ethers.getContract("SDUSD", dana.address);
     sdnftFromDeployer = await ethers.getContract("SDNFT", deployer);
     sdnftFromAdam = await ethers.getContract("SDNFT", adam.address);
     sdnftFromBob = await ethers.getContract("SDNFT", bob.address);
+    sdnftFromCathy = await ethers.getContract("SDNFT", cathy.address);
+    sdnftFromDana = await ethers.getContract("SDNFT", dana.address);
     daoFromDeployer = await ethers.getContract("SDUSDAO", deployer);
 
   });
 
-  it.only("Should calculate combined voting power correctly", async function () {
+  it("Should calculate combined voting power correctly", async function () {
+    
     // Mint some NFTs
     const adamNftTx = await sdnftFromAdam.buyNft({ value: nftValue });
     await adamNftTx.wait(1);
@@ -65,12 +72,12 @@ describe("SDUSDAO Contract", function () {
     // Mint some SDUSD tokens
     const transactionHash = await adam.sendTransaction({
       to: sdusdFromDeployer.address,
-      value: "10000000000000000000" // 10 ETH
+      value: ethers.BigNumber.from(oneEth).mul(10) // 10 ETH
     });
     await transactionHash.wait(1);
-    const adamMintTx = await sdusdFromAdam.mintSDUSD({ value: "1000000000000000000" }); // 1 ETH (2,000 SDUSD)
+    const adamMintTx = await sdusdFromAdam.mintSDUSD({ value: oneEth }); // 1 ETH (2,000 SDUSD)
     await adamMintTx.wait(1);
-    const bobMintTx = await sdusdFromBob.mintSDUSD({ value: "2000000000000000000" }); // 2 ETH (4,000 SDUSD)
+    const bobMintTx = await sdusdFromBob.mintSDUSD({ value: ethers.BigNumber.from(oneEth).add(oneEth) }); // 2 ETH (4,000 SDUSD)
     await bobMintTx.wait(1);
 
     await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded.
@@ -91,17 +98,168 @@ describe("SDUSDAO Contract", function () {
     const adamVotes = await daoFromDeployer.testGetVotes(adam.address, blockNumber);
     const bobVotes = await daoFromDeployer.testGetVotes(bob.address, blockNumber);
 
-    console.log("adamVotes : ", adamVotes.toString());
-    console.log("bobVotes : ", bobVotes.toString());
-
     // adam: 1000 SDUSD + 1 NFT (10,000 votes)
     expect(adamVotes.toString()).to.equal(ethers.BigNumber.from(nftVotes).add(oneEthVotes));
 
-    // bob: 500 SDUSD + 1 NFT (10,000 votes)
+    // bob: 500 SDUSD + 2 NFTs (10,000 votes)
     expect(bobVotes.toString()).to.equal(ethers.BigNumber.from(nftVotes).add(nftVotes).add(oneEthVotes).add(oneEthVotes));
   });
 
-  it("Should allow a proposal to be created", async function () {
+  it("Should calculate combined voting power correctly after transferring SDUSD", async function () {
+    
+    // Mint some NFTs
+    const adamNftTx = await sdnftFromAdam.buyNft({ value: nftValue });
+    await adamNftTx.wait(1);
+    const bobNftTx = await sdnftFromBob.buyNft({ value: nftValue });
+    await bobNftTx.wait(1);
+    const bobNftTx2 = await sdnftFromBob.buyNft({ value: nftValue });
+    await bobNftTx2.wait(1);
+
+    // Mint some SDUSD tokens
+    const transactionHash = await adam.sendTransaction({
+      to: sdusdFromDeployer.address,
+      value: ethers.BigNumber.from(oneEth).mul(10) // 10 ETH
+    });
+    await transactionHash.wait(1);
+    const adamMintTx = await sdusdFromAdam.mintSDUSD({ value: oneEth }); // 1 ETH (2,000 SDUSD)
+    await adamMintTx.wait(1);
+    const bobMintTx = await sdusdFromBob.mintSDUSD({ value: ethers.BigNumber.from(oneEth).add(oneEth) }); // 2 ETH (4,000 SDUSD)
+    await bobMintTx.wait(1);
+
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded.
+
+    // Delegate votes for SDUSD and NFT
+    await sdusdFromAdam.delegate(adam.address);
+    await sdusdFromBob.delegate(bob.address);
+    await sdnftFromAdam.delegate(adam.address);
+    await sdnftFromBob.delegate(bob.address);
+
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+
+
+    // Transfer the tokens
+    await sdusdFromAdam.transfer(cathy.address, ethers.BigNumber.from(oneEth).mul("2000")); // 2,000 SDUSD
+    await sdusdFromBob.transfer(dana.address, ethers.BigNumber.from(oneEth).mul("4000")); // 4,000 SDUSD
+
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+
+    // Re-delegate votes for SDUSD
+    await sdusdFromCathy.delegate(cathy.address);
+    await sdusdFromDana.delegate(dana.address);
+
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+    
+    const blockNumber = await ethers.provider.getBlockNumber() - 1;
+
+
+    // Get voting power
+    const adamVotes = await daoFromDeployer.testGetVotes(adam.address, blockNumber);
+    const bobVotes = await daoFromDeployer.testGetVotes(bob.address, blockNumber);
+    const cathyVotes = await daoFromDeployer.testGetVotes(cathy.address, blockNumber);
+    const danaVotes = await daoFromDeployer.testGetVotes(dana.address, blockNumber);
+
+    // adam: 1 NFT (10,000 votes)
+    expect(adamVotes.toString()).to.equal(ethers.BigNumber.from(nftVotes));
+
+    // bob: 2 NFTs (20,000 votes)
+    expect(bobVotes.toString()).to.equal(ethers.BigNumber.from(nftVotes).mul("2"));
+
+    // cathy: 2000 SDUSD
+    expect(cathyVotes.toString()).to.equal(ethers.BigNumber.from(oneEthVotes));
+
+    // dana: 4000 SDUSD
+    expect(danaVotes.toString()).to.equal(ethers.BigNumber.from(oneEthVotes).mul("2"));
+
+  });
+
+  it("Should calculate combined voting power correctly after transferring SDNFTs", async function () {
+    
+    // Mint some NFTs
+    const adamNftTx = await sdnftFromAdam.buyNft({ value: nftValue });
+    const adamReceipt = await adamNftTx.wait(1);
+
+    const bobNftTx = await sdnftFromBob.buyNft({ value: nftValue });
+    const bobReceipt1 = await bobNftTx.wait(1);
+    const bobNftTx2 = await sdnftFromBob.buyNft({ value: nftValue });
+    const bobReceipt2 = await bobNftTx2.wait(1);
+
+
+    // Extract the token IDs from the events
+    const adamNftTokenId = adamReceipt.events.find((e) => e.event === "Transfer").args.tokenId;
+    const bobNftTokenId1 = bobReceipt1.events.find((e) => e.event === "Transfer").args.tokenId;
+    const bobNftTokenId2 = bobReceipt2.events.find((e) => e.event === "Transfer").args.tokenId;
+
+    // Check initial ownership
+    expect(await sdnftFromAdam.ownerOf(adamNftTokenId)).to.equal(adam.address);
+    expect(await sdnftFromBob.ownerOf(bobNftTokenId1)).to.equal(bob.address);
+    expect(await sdnftFromBob.ownerOf(bobNftTokenId2)).to.equal(bob.address);
+
+
+    // Mint some SDUSD tokens
+    const transactionHash = await adam.sendTransaction({
+      to: sdusdFromDeployer.address,
+      value: ethers.BigNumber.from(oneEth).mul(10) // 10 ETH
+    });
+    await transactionHash.wait(1);
+    const adamMintTx = await sdusdFromAdam.mintSDUSD({ value: oneEth }); // 1 ETH (2,000 SDUSD)
+    await adamMintTx.wait(1);
+    const bobMintTx = await sdusdFromBob.mintSDUSD({ value: ethers.BigNumber.from(oneEth).add(oneEth) }); // 2 ETH (4,000 SDUSD)
+    await bobMintTx.wait(1);
+
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded.
+
+    // Delegate votes for SDUSD and NFT
+    await sdusdFromAdam.delegate(adam.address);
+    await sdusdFromBob.delegate(bob.address);
+    await sdnftFromAdam.delegate(adam.address);
+    await sdnftFromBob.delegate(bob.address);
+
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+
+
+    // Transfer the NFTs to cathy and dana
+    await sdnftFromAdam.transferFrom(adam.address, cathy.address, adamNftTokenId);
+    await sdnftFromBob.transferFrom(bob.address, dana.address, bobNftTokenId1);
+    await sdnftFromBob.transferFrom(bob.address, dana.address, bobNftTokenId2);
+
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+
+    // Re-delegate votes for SDNFT
+    await sdnftFromCathy.delegate(cathy.address);
+    await sdnftFromDana.delegate(dana.address);
+
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+    await ethers.provider.send("evm_mine", []); // Mine one block to ensure snapshots are recorded
+    
+    const blockNumber = await ethers.provider.getBlockNumber() - 1;
+
+
+    // Get voting power
+    const adamVotes = await daoFromDeployer.testGetVotes(adam.address, blockNumber);
+    const bobVotes = await daoFromDeployer.testGetVotes(bob.address, blockNumber);
+    const cathyVotes = await daoFromDeployer.testGetVotes(cathy.address, blockNumber);
+    const danaVotes = await daoFromDeployer.testGetVotes(dana.address, blockNumber);
+
+    // adam: 2,000 SDUSD (2,000 votes)
+    expect(adamVotes.toString()).to.equal(ethers.BigNumber.from(oneEthVotes));
+
+    // bob: 4,000 SDUSD (4,000 votes)
+    expect(bobVotes.toString()).to.equal(ethers.BigNumber.from(oneEthVotes).mul("2"));
+
+    // cathy: 1 NFT (10,000 votes)
+    expect(cathyVotes.toString()).to.equal(ethers.BigNumber.from(nftVotes));
+
+    // dana: 2 NFTs (20,000 votes)
+    expect(danaVotes.toString()).to.equal(ethers.BigNumber.from(nftVotes).mul("2"));
+
+  });
+
+  it.only("Should allow a proposal to be created", async function () {
     const description = "Proposal: Change minting threshold";
 
     // Create a proposal
