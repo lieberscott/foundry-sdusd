@@ -1,12 +1,12 @@
 const { network, ethers } = require("hardhat");
-const { FUNC, NEW_COLLATERAL_RATIO, PROPOSAL_DESCRIPTION, MIN_DELAY, developmentChains } = require("../utils/helper-hardhat-config");
+const { FUNC, NEW_COLLATERAL_RATIO, PROPOSAL_DESCRIPTION, MIN_DELAY, developmentChains, proposalsFile } = require("../utils/helper-hardhat-config");
 const fs = require("fs");
 const { moveBlocks } = require("../utils/move-blocks.js");
 const { moveTime } = require("../utils/move-time.js");
 
 
 const queueAndExecute = async () => {
-  const args = [NEW_STORE_VALUE];
+  const args = [NEW_COLLATERAL_RATIO];
   const functionToCall = FUNC;
   const sdusd = await ethers.getContract("SDUSD");
   const encodedFunctionCall = sdusd.interface.encodeFunctionData(functionToCall, args);
@@ -16,7 +16,7 @@ const queueAndExecute = async () => {
   const sdusdao = await ethers.getContract("SDUSDAO")
   console.log("Queueing...")
   const queueTx = await sdusdao.queue([sdusd.address], [0], [encodedFunctionCall], descriptionHash)
-  await queueTx.wait(1)
+  await queueTx.wait(1);
 
   if (developmentChains.includes(network.name)) {
     await moveTime(MIN_DELAY + 1)
@@ -32,7 +32,7 @@ const queueAndExecute = async () => {
     descriptionHash
   )
   await executeTx.wait(1)
-  console.log(`New collateral ratio value: ${await sdusd.getCollateralRatio()}`)
+  console.log(`New collateral ratio value: ${await sdusd.getEthCollateralRatio()}`)
 }
 
 queueAndExecute()

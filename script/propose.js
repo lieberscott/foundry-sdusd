@@ -38,9 +38,9 @@ const propose = async (args, functionToCall, proposalDescription) => {
   const proposalId = proposeReceipt.events[0].args.proposalId;
   console.log(`Proposed with proposal ID:\n  ${proposalId}`);
 
-  const proposalState = await sdusdao.state(proposalId)
-  const proposalSnapShot = await sdusdao.proposalSnapshot(proposalId)
-  const proposalDeadline = await sdusdao.proposalDeadline(proposalId)
+  const proposalState = await sdusdao.state(proposalId);
+  const proposalSnapShot = await sdusdao.proposalSnapshot(proposalId);
+  const proposalDeadline = await sdusdao.proposalDeadline(proposalId);
   // save the proposalId
   await storeProposalId(proposalId);
 

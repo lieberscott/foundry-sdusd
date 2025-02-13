@@ -17,18 +17,19 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
   // console.log("ABI of TimelockController:", timelock.interface.format());
 
 
-  // log("Setting up roles...");
+  log("Setting up roles...");
 
   const proposerRole = await timelock.PROPOSER_ROLE();
   const executorRole = await timelock.EXECUTOR_ROLE();
-  // const adminRole = await timelock.TIMELOCK_ADMIN_ROLE();
+  const adminRole = ethers.constants.HashZero;
 
-  // const proposerTx = await timelock.grantRole(proposerRole, sdusdao.address);
-  // await proposerTx.wait(1);
-  // const executorTx = await timelock.grantRole(executorRole, ADDRESS_ZERO);
-  // await executorTx.wait(1);
-  // const revokeTx = await timelock.revokeRole(adminRole, deployer);
-  // await revokeTx.wait(1);
+  const proposerTx = await timelock.grantRole(proposerRole, sdusdao.address);
+  await proposerTx.wait(1);
+  const executorTx = await timelock.grantRole(executorRole, ADDRESS_ZERO);
+  await executorTx.wait(1);
+  const renounceTx = await timelock.renounceRole(adminRole, deployer);
+  await renounceTx.wait(1);
+
 
 }
 

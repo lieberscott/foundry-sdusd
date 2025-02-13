@@ -1,4 +1,4 @@
-import { network } from "hardhat"
+const { network } = require("hardhat");
 
 const moveTime = async(amount) => {
   console.log("Moving blocks...")

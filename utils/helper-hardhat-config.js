@@ -44,14 +44,15 @@ const SDNFT_SYMBOL = "SDNFT";
 const MIN_DELAY = 3600; // 1 hour - after a vote passes, you have 1 hour before you can enact
 
 // 04-deploy-sdudsdao.js consts
-const VOTING_DELAY = 1; // 1 Block - How many blocks till a proposal vote becomes active
-const VOTING_PERIOD = 5; // blocks; 45818 is 1 week - how long the vote lasts.
+const VOTING_DELAY = 7200; // How many blocks till a proposal vote becomes active
+const VOTING_PERIOD = 45818; // blocks; 45818 is 1 week - how long the vote lasts.
 // const VOTING_PERIOD = 45818 // 1 week - how long the vote lasts.
 const VOTING_POWER_THRESHOLD = 1000; // votes needed to submit a proposal
-const QUORUM_PERCENTAGE = 4; // Need 4% of voters to pass
+const QUORUM_PERCENTAGE = 50; // Need 50% quorum to pass
 
 // 05-setup-governance-contracts.js
 const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000"
+const ADDRESS_DEAD = "0x000000000000000000000000000000000000dead"
 
 const developmentChains = ["hardhat", "localhost"];
 
@@ -77,6 +78,7 @@ module.exports = {
   VOTING_DELAY,
   VOTING_POWER_THRESHOLD,
   ADDRESS_ZERO,
+  ADDRESS_DEAD,
   developmentChains,
   proposalsFile,
   NEW_COLLATERAL_RATIO,

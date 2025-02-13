@@ -36,12 +36,14 @@ contract SDUSDAO is Governor, GovernorSettings, GovernorCountingSimple, Governor
     IVotes _token,
     TimelockController _timelock,
     uint256 _quorumPercentage,
+    uint48 _votingDelay,
+    uint32 _votingPeriod,
     uint256 _votingPowerThreshold,
     SDUSD _sdusd,
     SDNFT _votingNFT
   )
 		Governor("SDUSDAO")
-		GovernorSettings(7200, 5400, _votingPowerThreshold)
+		GovernorSettings(_votingDelay, _votingPeriod, _votingPowerThreshold)
 		GovernorVotes(_token)
 		GovernorVotesQuorumFraction(_quorumPercentage)
 		GovernorTimelockControl(_timelock)

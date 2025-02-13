@@ -12,7 +12,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
   log("----------------------------------------------------");
   log("Deploying Timelock and waiting for confirmations...");
 
-  const arguments = [MIN_DELAY, [], [], ADDRESS_ZERO]; // minDelay, proposers, executors, admin (optional)
+  const arguments = [MIN_DELAY, [], [], deployer]; // minDelay, proposers, executors, admin (optional)
 
   const timelockDeployment = await deploy("TimeLock", {
     from: deployer,

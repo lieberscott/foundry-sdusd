@@ -18,6 +18,9 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     ethUsdPriceFeedAddress = networkConfigInfo[chainId]["ethUsdPriceFeed"]
   }
 
+
+  const timelock = await get("TimeLock");
+
   log("----------------------------------------------------");
   log("Deploying SDUSD and waiting for confirmations...");
 
@@ -37,6 +40,8 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     await verify(sdusdTokenDeployment.address, arguments);
   }
 
+  const sdusd = await ethers.getContract("SDUSD");
+
   // const sdusdToken = await ethers.getContractAt("SDUSD", sdusdTokenDeployment.address);
   // log("Available functions on SDUSD contract:");
   // log(sdusdToken.interface);  // Logs all functions accessible in the SDUSD contract
@@ -44,6 +49,10 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
   // log(`Delegating to ${deployer}`);
   // await delegate(sdusdToken, deployer);
   // log("Delegated!");
+
+  // transfering ownership to the Timelock contract
+  const transferTx = await sdusd.transferOwnership(timelock.address);
+  await transferTx.wait(1);
 }
 
 const delegate = async (sdusdToken, delegatedAccount) => {

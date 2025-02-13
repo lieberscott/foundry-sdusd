@@ -25,6 +25,7 @@ const vote = async(proposalId, voteWay, reason) => {
 
   const sdusdaoFromAdam = await ethers.getContract("SDUSDAO", adam.address);
 
+
   const voteTx = await sdusdaoFromAdam.castVoteWithReason(proposalId, voteWay, reason);
   const voteTxReceipt = await voteTx.wait(1);
   console.log(voteTxReceipt.events[0].args.reason);
