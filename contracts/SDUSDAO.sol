@@ -55,95 +55,95 @@ contract SDUSDAO is Governor, GovernorSettings, GovernorCountingSimple, Governor
   // The following functions are overrides required by Solidity.
 
   function votingDelay()
-      public
-      view
-      override(Governor, GovernorSettings)
-      returns (uint256)
+    public
+    view
+    override(Governor, GovernorSettings)
+    returns (uint256)
   {
-      return super.votingDelay();
+    return super.votingDelay();
   }
 
   function votingPeriod()
-      public
-      view
-      override(Governor, GovernorSettings)
-      returns (uint256)
+    public
+    view
+    override(Governor, GovernorSettings)
+    returns (uint256)
   {
-      return super.votingPeriod();
+    return super.votingPeriod();
   }
 
   function quorum(uint256 blockNumber)
-      public
-      view
-      override(Governor, GovernorVotesQuorumFraction)
-      returns (uint256)
+    public
+    view
+    override(Governor, GovernorVotesQuorumFraction)
+    returns (uint256)
   {
-      return super.quorum(blockNumber);
+    return super.quorum(blockNumber);
   }
 
   function state(uint256 proposalId)
-      public
-      view
-      override(Governor, GovernorTimelockControl)
-      returns (ProposalState)
+    public
+    view
+    override(Governor, GovernorTimelockControl)
+    returns (ProposalState)
   {
-      return super.state(proposalId);
+    return super.state(proposalId);
   }
 
   function proposalNeedsQueuing(uint256 proposalId)
-      public
-      view
-      override(Governor, GovernorTimelockControl)
-      returns (bool)
+    public
+    view
+    override(Governor, GovernorTimelockControl)
+    returns (bool)
   {
-      return super.proposalNeedsQueuing(proposalId);
+    return super.proposalNeedsQueuing(proposalId);
   }
 
   function proposalThreshold()
-      public
-      view
-      override(Governor, GovernorSettings)
-      returns (uint256)
+    public
+    view
+    override(Governor, GovernorSettings)
+    returns (uint256)
   {
-      return super.proposalThreshold();
+    return super.proposalThreshold();
   }
 
   function _queueOperations(uint256 proposalId, address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32 descriptionHash)
-      internal
-      override(Governor, GovernorTimelockControl)
-      returns (uint48)
+    internal
+    override(Governor, GovernorTimelockControl)
+    returns (uint48)
   {
-      return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
+    return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
   }
 
   function _executeOperations(uint256 proposalId, address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32 descriptionHash)
-      internal
-      override(Governor, GovernorTimelockControl)
+    internal
+    override(Governor, GovernorTimelockControl)
   {
-      super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
+    super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
   }
 
   function _cancel(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32 descriptionHash)
-      internal
-      override(Governor, GovernorTimelockControl)
-      returns (uint256)
+    internal
+    override(Governor, GovernorTimelockControl)
+    returns (uint256)
   {
-      return super._cancel(targets, values, calldatas, descriptionHash);
+    return super._cancel(targets, values, calldatas, descriptionHash);
   }
 
   function _executor()
-      internal
-      view
-      override(Governor, GovernorTimelockControl)
-      returns (address)
+    internal
+    view
+    override(Governor, GovernorTimelockControl)
+    returns (address)
   {
-      return super._executor();
+    return super._executor();
   }
 
 
   /** CHAT-GPT CODE */
 
-// Override voting power calculation to combine ERC20 and ERC721 votes
+  // Override voting power calculation to combine ERC20 and ERC721 votes
   function _getVotes(
     address account,
     uint256 blockNumber,
@@ -159,7 +159,7 @@ contract SDUSDAO is Governor, GovernorSettings, GovernorCountingSimple, Governor
     address account,
     uint256 blockNumber
   ) external view returns (uint256) {
-      return _getVotes(account, blockNumber, "");
+    return _getVotes(account, blockNumber, "");
   }
 
 

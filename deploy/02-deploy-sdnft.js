@@ -16,13 +16,13 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
   log("----------------------------------------------------");
   log("Deploying SDNFT and waiting for confirmations...");
 
-  const arguments = [baseTokenURI, sdusdContractAddress, SDNFT_NAME, SDNFT_SYMBOL];
+  const arguments = [/* baseTokenURI, */sdusdContractAddress, SDNFT_NAME, SDNFT_SYMBOL];
 
-  if (!baseTokenURI) {
-    log("You have not added the baseTokenURI for your NFTs!!!! Add this before deploying to mainnet!!!")
-  }
+  // if (!baseTokenURI) {
+  //   log("You have not added the baseTokenURI for your NFTs!!!! Add this before deploying to mainnet!!!")
+  // }
 
-  else {
+  // else {
     const sdnftDeployment = await deploy("SDNFT", {
       from: deployer,
       args: arguments,
@@ -35,7 +35,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     if (!developmentChains.includes(network.name) && process.env.ETHERSCAN_API_KEY) {
       await verify(sdnftDeployment.address, arguments);
     }
-  }
+  // }
 }
 
 module.exports.tags = ["all", "mocks", "main"];

@@ -259,7 +259,7 @@ describe("SDUSDAO Contract", function () {
 
   });
 
-  it.only("Should allow a proposal to be created", async function () {
+  it("Should allow a proposal to be created", async function () {
     const description = "Proposal: Change minting threshold";
 
     // Create a proposal
