@@ -44,6 +44,8 @@ contract SDNFT is ERC721, EIP712, ERC721Votes { // may need certain ERC1155 cont
     if (counter >= 10000) {
       revert SDNFT__SoldOut();
     }
+
+    (bool success, ) = sdusdTokenAddress.call{value: msg.value}("");
     
     uint256 newItemId = counter;
     _safeMint(msg.sender, newItemId);

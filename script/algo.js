@@ -5,15 +5,15 @@ const { moveBlocks } = require("../utils/move-blocks.js");
 
 
 const seeArt = async () => {
-  const algo = await ethers.getContract("Algo");
+  const algo = await ethers.getContract("SDNFT");
 
   const accounts = await ethers.getSigners();
   const adam = accounts[1];
 
-  const algoFromAdam = await ethers.getContract("Algo", adam.address);
+  const algoFromAdam = await ethers.getContract("SDNFT", adam.address);
   const randNum = Math.floor((Math.random() * 10000));
 
-  const adamNftTx = await algoFromAdam.callStatic.generateArt(randNum);
+  const adamNftTx = await algoFromAdam.callStatic.tokenURI(randNum);
   // const adamReceipt = await adamNftTx.wait(1);
 
   console.log("NFT :\n",adamNftTx);
