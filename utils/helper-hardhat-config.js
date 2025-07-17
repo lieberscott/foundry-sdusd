@@ -60,7 +60,7 @@ const developmentChains = ["hardhat", "localhost"];
 const proposalsFile = "proposals.json";
 const NEW_COLLATERAL_RATIO = 450;
 const FUNC = "changeMintingThreshold";
-const PROPOSAL_DESCRIPTION = "Change mintingThreshold from 400 to 450";
+const PROPOSAL_DESCRIPTION = "Change mintingThreshold from 4:1 to 4.5:1 (require at least 4.5x as much ETH in $ as there are SDUSD for users to be able to mint more SDSUD";
 
 module.exports = {
   networkConfigInfo,

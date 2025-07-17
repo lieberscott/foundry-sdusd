@@ -291,7 +291,7 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
 
 	// Changes degredationThreshold
-  function changeDegeadationThreshold(uint256 newValue) public onlyOwner {
+  function changeDegredationThreshold(uint256 newValue) public onlyOwner {
     if (newValue <= 0 || newValue >= 999) {
       revert SDUSD__OutOfRange();
     }
