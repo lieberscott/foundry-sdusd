@@ -47,7 +47,7 @@ const MIN_DELAY = 3600; // 1 hour - after a vote passes, you have 1 hour before 
 const VOTING_DELAY = 7200; // How many blocks till a proposal vote becomes active
 const VOTING_PERIOD = 45818; // blocks; 45818 is 1 week - how long the vote lasts.
 // const VOTING_PERIOD = 45818 // 1 week - how long the vote lasts.
-const VOTING_POWER_THRESHOLD = 1000; // votes needed to submit a proposal
+const VOTING_POWER_THRESHOLD = 10000; // votes needed to submit a proposal
 const QUORUM_PERCENTAGE = 50; // Need 50% quorum to pass
 
 // 05-setup-governance-contracts.js
