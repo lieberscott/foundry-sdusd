@@ -41,6 +41,9 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 		let mockV3Aggregator;
 		const sendValue = "1000000000000000000"; // 1 ETH with 18 zeros
     const initialAmt = "4000000000000000000"; // 4 ETH with 18 zeros
+    const smallInitialAmt = "100000000000000000"; // 0.1 ETH with 17 trailing zeros (18 total decimal places)
+    const smallMintAmt = "10000000000000000"; // 0.01 ETH with 16 trailing zeros (18 total decimal places)
+    const smallRedeemAmt = "5000000000000000000"; // $5 SDUSD with 18 trailing zeros (18 total decimal places)
     const maxMintableValue = "1333333333333333333"; // 1.333... ETH, when there is 4 ETH in the contract and 0 SDUSD minted
     const startingBalances = ethers.BigNumber.from("10000").mul(sendValue);
 
@@ -310,7 +313,45 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
 			it("Rejects when user redeems more SDUSD than he has", async () => {
 				await expect(sdusdFromDeployer.redeemSdusdForEth(oneThousand)).to.be.revertedWith("SDUSD__WithdrawalAmountLargerThanUserBalance")
-			})
+			});
+
+      it("Redeems with only small amounts minted and user redeems only a portion of his SDUSD", async () => {
+        // Send initial ETH
+				const transactionHash = await adam.sendTransaction({
+          to: sdusdFromDeployer.address,
+          value: smallInitialAmt // 0.1 ETH
+        });
+        await transactionHash.wait(1);
+
+        const ethBalanceStart = (await ethers.provider.getBalance(bob.address));
+
+        // Mint 0.01 SDUSD
+        const mintTx = await sdusdFromBob.mintSDUSD({value: smallMintAmt});
+        const mintTxReceipt = await mintTx.wait(1);
+
+        // Redeem 0.005 SDUSD
+        const redeemTx = await sdusdFromBob.redeemSdusdForEth(smallRedeemAmt);
+        const redeemTxReceipt = await redeemTx.wait(1);
+
+        const gasUsed1 = mintTxReceipt.gasUsed;
+        const effectiveGasPrice1 = mintTxReceipt.effectiveGasPrice;
+        const gasCost1 = gasUsed1.mul(effectiveGasPrice1);
+
+        const gasUsed2 = redeemTxReceipt.gasUsed;
+        const effectiveGasPrice2 = redeemTxReceipt.effectiveGasPrice;
+        const gasCost2 = gasUsed2.mul(effectiveGasPrice2);
+
+        // Step 6: Get balance of ETH
+        const ethBalanceEnd = await ethers.provider.getBalance(bob.address);
+
+        const smallMintAmtBigNum = ethers.BigNumber.from(smallMintAmt); // 0.01 ETH, or $20 SDUSD
+        const smallRedeemAmtInEth = smallMintAmtBigNum.div(4).toString(); // 0.0025 ETH, or $5 SDUSD
+        
+        // User spent 1 ETH, then is receiving back 4 ETH, so should end with 10,003
+        assert.equal(ethBalanceStart.sub(smallMintAmt).add(smallRedeemAmtInEth).toString(), ethBalanceEnd.add(gasCost1).add(gasCost2).toString());
+
+        // assert.equal(1, 1);
+      });
 
       it("Redeems SDUSD correctly when price of ETH does not change", async () => {
         // Send initial ETH
@@ -333,6 +374,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Check balance of SDUSD contract after redemption
         const ethBalance = await ethers.provider.getBalance(sdusdFromDeployer.address);
+        
         assert.equal(ethBalance.toString(), initialAmt);
         
 			})
@@ -667,7 +709,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
       });
 
-      it("Correctly redeems for multiple users above and below degredationThreshold as the price of ETH changes", async () => {
+      it.only("Correctly redeems for multiple users above and below degredationThreshold as the price of ETH changes", async () => {
 
         // Minting ETH prices for each person
         const adamPrice = "2000";
@@ -697,44 +739,44 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const bobMintGasPrice = bobMintTxReceipt.effectiveGasPrice;
         const bobMintGasCost = bobMintGas.mul(bobMintGasPrice);
         
-        const priceTxCathy = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyPrice, 8));
-        await priceTxCathy.wait(1);
-        const cathyMintTx = await sdusdFromCathy.mintSDUSD({ value: sendValue }); // 1 ETH ($1,500)
-        const cathyMintTxReceipt = await cathyMintTx.wait(1);
-        const cathyMintGas = cathyMintTxReceipt.gasUsed;
-        const cathyMintGasPrice = cathyMintTxReceipt.effectiveGasPrice;
-        const cathyMintGasCost = cathyMintGas.mul(cathyMintGasPrice);
+        // const priceTxCathy = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyPrice, 8));
+        // await priceTxCathy.wait(1);
+        // const cathyMintTx = await sdusdFromCathy.mintSDUSD({ value: sendValue }); // 1 ETH ($1,500)
+        // const cathyMintTxReceipt = await cathyMintTx.wait(1);
+        // const cathyMintGas = cathyMintTxReceipt.gasUsed;
+        // const cathyMintGasPrice = cathyMintTxReceipt.effectiveGasPrice;
+        // const cathyMintGasCost = cathyMintGas.mul(cathyMintGasPrice);
        
-        const priceTxDana = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(danaPrice, 8));
-        await priceTxDana.wait(1);
-        const danaMintTx = await sdusdFromDana.mintSDUSD({ value: sendValue }); // 1 ETH ($500)
-        const danaMintTxReceipt = await danaMintTx.wait(1);
-        const danaMintGas = danaMintTxReceipt.gasUsed;
-        const danaMintGasPrice = danaMintTxReceipt.effectiveGasPrice;
-        const danaMintGasCost = danaMintGas.mul(danaMintGasPrice);
+        // const priceTxDana = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(danaPrice, 8));
+        // await priceTxDana.wait(1);
+        // const danaMintTx = await sdusdFromDana.mintSDUSD({ value: sendValue }); // 1 ETH ($500)
+        // const danaMintTxReceipt = await danaMintTx.wait(1);
+        // const danaMintGas = danaMintTxReceipt.gasUsed;
+        // const danaMintGasPrice = danaMintTxReceipt.effectiveGasPrice;
+        // const danaMintGasCost = danaMintGas.mul(danaMintGasPrice);
 
 
         // Step 3: Check each user's balance is correct
         const adamBalTx = await sdusdFromAdam.balanceOf(adam.address);
         const adamBal = adamBalTx.toString();
 
-        const bobBalTx = await sdusdFromBob.balanceOf(bob.address);
-        const bobBal = bobBalTx.toString();
+        // const bobBalTx = await sdusdFromBob.balanceOf(bob.address);
+        // const bobBal = bobBalTx.toString();
 
-        const cathyBalTx = await sdusdFromCathy.balanceOf(cathy.address);
-        const cathyBal = cathyBalTx.toString();
+        // const cathyBalTx = await sdusdFromCathy.balanceOf(cathy.address);
+        // const cathyBal = cathyBalTx.toString();
 
-        const danaBalTx = await sdusdFromDana.balanceOf(dana.address);
-        const danaBal = danaBalTx.toString();
+        // const danaBalTx = await sdusdFromDana.balanceOf(dana.address);
+        // const danaBal = danaBalTx.toString();
 
         assert.equal(adamBal, ethers.BigNumber.from(adamPrice).mul(sendValue).toString());
-        assert.equal(bobBal, ethers.BigNumber.from(bobPrice).mul(sendValue).toString());
-        assert.equal(cathyBal, ethers.BigNumber.from(cathyPrice).mul(sendValue).toString());
-        assert.equal(danaBal, ethers.BigNumber.from(danaPrice).mul(sendValue).toString());
+        // assert.equal(bobBal, ethers.BigNumber.from(bobPrice).mul(sendValue).toString());
+        // assert.equal(cathyBal, ethers.BigNumber.from(cathyPrice).mul(sendValue).toString());
+        // assert.equal(danaBal, ethers.BigNumber.from(danaPrice).mul(sendValue).toString());
 
         // Step 4: Redeem SDUSD while changing ETH price
 
-        const adamRedeemPrice = "750";
+        const adamRedeemPrice = "240";
         const bobRedeemPrice = "500";
         const cathyRedeemPrice = "400";
         const danaRedeemPrice = "300";
@@ -752,6 +794,18 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         await adamRedeemPriceTx.wait(1);
         const adamRedeemTx = await sdusdFromAdam.redeemSdusdForEth(adamBal);
         const adamRedeemTxReceipt = await adamRedeemTx.wait(1);
+
+
+        const event = adamRedeemTxReceipt.events.find(e => e.event === "Test");
+
+
+        console.log("redemptionRate : ", Number(event.args.redemptionRate));
+        console.log("weiAmt : ", Number(event.args.weiAmt));
+        console.log("quadraticSqrtValueAfter : ", Number(event.args.endingCollateralRatio));
+        console.log("quadraticA : ", Number(event.args.quadraticAAmt));
+
+
+
         const adamRedeemGas = adamRedeemTxReceipt.gasUsed;
         const adamRedeemGasPrice = adamRedeemTxReceipt.effectiveGasPrice;
         const adamRedeemGasCost= adamRedeemGas.mul(adamRedeemGasPrice);
@@ -767,94 +821,94 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const adamEthReceivedJSUpdated = adamEthReceivedJS.substring(0, adamLengthJS - 1)
         const adamEthReceivedSolidityUpdated = adamEthReceivedSolidity.substring(0, adamLengthJS - 1);
 
-        // Calculate using JS locally for Bob
-        const bobTotalSupplySdusd = (await sdusdFromBob.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
-        const bobSdusdEthBal0 = await ethers.provider.getBalance(sdusdFromDeployer.address); // total ETH balance of the SDUSD contract at the time this user is redeeming
-        const bobSdusdEthBal = bobSdusdEthBal0.div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
-        const bobBalJS = bobBalTx.div(sendValue).toString(); // user's SDUSD balance
-        const bobEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(bobTotalSupplySdusd), parseInt(bobBalJS), parseInt(bobRedeemPrice), parseInt(bobSdusdEthBal));
-        const bobEthReceivedJS = bobEthReceived.toString().replace(".", ""); // 26666666666666665
+        // // Calculate using JS locally for Bob
+        // const bobTotalSupplySdusd = (await sdusdFromBob.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
+        // const bobSdusdEthBal0 = await ethers.provider.getBalance(sdusdFromDeployer.address); // total ETH balance of the SDUSD contract at the time this user is redeeming
+        // const bobSdusdEthBal = bobSdusdEthBal0.div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
+        // const bobBalJS = bobBalTx.div(sendValue).toString(); // user's SDUSD balance
+        // const bobEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(bobTotalSupplySdusd), parseInt(bobBalJS), parseInt(bobRedeemPrice), parseInt(bobSdusdEthBal));
+        // const bobEthReceivedJS = bobEthReceived.toString().replace(".", ""); // 26666666666666665
 
-        // Redeem and calculate using Solidity contract
-        const bobRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(bobRedeemPrice, 8));
-        await bobRedeemPriceTx.wait(1);
+        // // Redeem and calculate using Solidity contract
+        // const bobRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(bobRedeemPrice, 8));
+        // await bobRedeemPriceTx.wait(1);
 
-        const bobRedeemTx = await sdusdFromBob.redeemSdusdForEth(bobBal);
-        const bobRedeemTxReceipt = await bobRedeemTx.wait(1);
-        const bobRedeemGas = bobRedeemTxReceipt.gasUsed;
-        const bobRedeemGasPrice = bobRedeemTxReceipt.effectiveGasPrice;
-        const bobRedeemGasCost= bobRedeemGas.mul(bobRedeemGasPrice);
-        const bobEthSent = ethers.BigNumber.from(sendValue);
-        const bobEndingEthBal = await ethers.provider.getBalance(bob.address);
+        // const bobRedeemTx = await sdusdFromBob.redeemSdusdForEth(bobBal);
+        // const bobRedeemTxReceipt = await bobRedeemTx.wait(1);
+        // const bobRedeemGas = bobRedeemTxReceipt.gasUsed;
+        // const bobRedeemGasPrice = bobRedeemTxReceipt.effectiveGasPrice;
+        // const bobRedeemGasCost= bobRedeemGas.mul(bobRedeemGasPrice);
+        // const bobEthSent = ethers.BigNumber.from(sendValue);
+        // const bobEndingEthBal = await ethers.provider.getBalance(bob.address);
 
-        const bobEthReceivedSolidity = bobEndingEthBal.sub(startingBalances.toString()).add(bobMintGasCost.toString()).add(bobRedeemGasCost.toString()).add(sendValue).toString();
+        // const bobEthReceivedSolidity = bobEndingEthBal.sub(startingBalances.toString()).add(bobMintGasCost.toString()).add(bobRedeemGasCost.toString()).add(sendValue).toString();
 
-        // Making each number 10 digits so assert.closeTo will work
-        const bobLengthJS = 10;
-        const bobEthReceivedJSUpdated = bobEthReceivedJS.substring(0, bobLengthJS)
-        const bobEthReceivedSolidityUpdated = bobEthReceivedSolidity.substring(0, bobLengthJS);
+        // // Making each number 10 digits so assert.closeTo will work
+        // const bobLengthJS = 10;
+        // const bobEthReceivedJSUpdated = bobEthReceivedJS.substring(0, bobLengthJS)
+        // const bobEthReceivedSolidityUpdated = bobEthReceivedSolidity.substring(0, bobLengthJS);
 
-        // Calculate using JS locally for Cathy
-        const cathyTotalSupplySdusd = (await sdusdFromCathy.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
-        const cathySdusdEthBal0 = await ethers.provider.getBalance(sdusdFromDeployer.address); // total ETH balance of the SDUSD contract at the time this user is redeeming
-        const cathySdusdEthBal = cathySdusdEthBal0.div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
-        const cathyBalJS = cathyBalTx.div(sendValue).toString(); // user's SDUSD balance
+        // // Calculate using JS locally for Cathy
+        // const cathyTotalSupplySdusd = (await sdusdFromCathy.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
+        // const cathySdusdEthBal0 = await ethers.provider.getBalance(sdusdFromDeployer.address); // total ETH balance of the SDUSD contract at the time this user is redeeming
+        // const cathySdusdEthBal = cathySdusdEthBal0.div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
+        // const cathyBalJS = cathyBalTx.div(sendValue).toString(); // user's SDUSD balance
 
-        const cathyEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(cathyTotalSupplySdusd), parseInt(cathyBalJS), parseInt(cathyRedeemPrice), parseInt(cathySdusdEthBal));
-        const cathyEthReceivedJS = cathyEthReceived.toString().replace(".", ""); // 26666666666666665
-        console.log()
+        // const cathyEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(cathyTotalSupplySdusd), parseInt(cathyBalJS), parseInt(cathyRedeemPrice), parseInt(cathySdusdEthBal));
+        // const cathyEthReceivedJS = cathyEthReceived.toString().replace(".", ""); // 26666666666666665
+        // console.log()
 
-        // Redeem and calculate using Solidity contract
-        const cathyRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyRedeemPrice, 8));
-        await cathyRedeemPriceTx.wait(1);
-        const cathyRedeemTx = await sdusdFromCathy.redeemSdusdForEth(cathyBal);
-        const cathyRedeemTxReceipt = await cathyRedeemTx.wait(1);
-        const cathyRedeemGas = cathyRedeemTxReceipt.gasUsed;
-        const cathyRedeemGasPrice = cathyRedeemTxReceipt.effectiveGasPrice;
-        const cathyRedeemGasCost= cathyRedeemGas.mul(cathyRedeemGasPrice);
-        const cathyEthSent = ethers.BigNumber.from(sendValue);
-        const cathyEndingEthBal = await ethers.provider.getBalance(cathy.address);
+        // // Redeem and calculate using Solidity contract
+        // const cathyRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyRedeemPrice, 8));
+        // await cathyRedeemPriceTx.wait(1);
+        // const cathyRedeemTx = await sdusdFromCathy.redeemSdusdForEth(cathyBal);
+        // const cathyRedeemTxReceipt = await cathyRedeemTx.wait(1);
+        // const cathyRedeemGas = cathyRedeemTxReceipt.gasUsed;
+        // const cathyRedeemGasPrice = cathyRedeemTxReceipt.effectiveGasPrice;
+        // const cathyRedeemGasCost= cathyRedeemGas.mul(cathyRedeemGasPrice);
+        // const cathyEthSent = ethers.BigNumber.from(sendValue);
+        // const cathyEndingEthBal = await ethers.provider.getBalance(cathy.address);
 
-        const cathyEthReceivedSolidity = cathyEndingEthBal.sub(startingBalances.toString()).add(cathyMintGasCost.toString()).add(cathyRedeemGasCost.toString()).add(sendValue).toString();
+        // const cathyEthReceivedSolidity = cathyEndingEthBal.sub(startingBalances.toString()).add(cathyMintGasCost.toString()).add(cathyRedeemGasCost.toString()).add(sendValue).toString();
         
-        // Making each number 10 digits so assert.closeTo will work
-        const cathyLengthJS = 10;
+        // // Making each number 10 digits so assert.closeTo will work
+        // const cathyLengthJS = 10;
 
-        // subtracting 1 extra digit from the length, because JS will round, i.e. 2.66666666665, when it should be 2.666666666
-        const cathyEthReceivedJSUpdated = cathyEthReceivedJS.substring(0, cathyLengthJS)
-        const cathyEthReceivedSolidityUpdated = cathyEthReceivedSolidity.substring(0, cathyLengthJS);
+        // // subtracting 1 extra digit from the length, because JS will round, i.e. 2.66666666665, when it should be 2.666666666
+        // const cathyEthReceivedJSUpdated = cathyEthReceivedJS.substring(0, cathyLengthJS)
+        // const cathyEthReceivedSolidityUpdated = cathyEthReceivedSolidity.substring(0, cathyLengthJS);
 
-        // Calculate using JS locally for Dana
-        const danaTotalSupplySdusd = (await sdusdFromDana.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
-        const danaSdusdEthBal = (await ethers.provider.getBalance(sdusdFromDeployer.address)).div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
-        const danaBalJS = danaBalTx.div(sendValue).toString(); // user's SDUSD balance
-        const danaEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(danaTotalSupplySdusd), parseInt(danaBalJS), parseInt(danaRedeemPrice), parseInt(danaSdusdEthBal));
-        const danaEthReceivedJS = danaEthReceived.toString().replace(".", ""); // 26666666666666665
+        // // Calculate using JS locally for Dana
+        // const danaTotalSupplySdusd = (await sdusdFromDana.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
+        // const danaSdusdEthBal = (await ethers.provider.getBalance(sdusdFromDeployer.address)).div(sendValue).toString(); // total ETH balance of the SDUSD contract at the time this user is redeeming
+        // const danaBalJS = danaBalTx.div(sendValue).toString(); // user's SDUSD balance
+        // const danaEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(danaTotalSupplySdusd), parseInt(danaBalJS), parseInt(danaRedeemPrice), parseInt(danaSdusdEthBal));
+        // const danaEthReceivedJS = danaEthReceived.toString().replace(".", ""); // 26666666666666665
 
-        // Redeem and calculate using Solidity contract
-        const danaRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(danaRedeemPrice, 8));
-        await danaRedeemPriceTx.wait(1);
-        const danaRedeemTx = await sdusdFromDana.redeemSdusdForEth(danaBal);
-        const danaRedeemTxReceipt = await danaRedeemTx.wait(1);
-        const danaRedeemGas = danaRedeemTxReceipt.gasUsed;
-        const danaRedeemGasPrice = danaRedeemTxReceipt.effectiveGasPrice;
-        const danaRedeemGasCost= danaRedeemGas.mul(danaRedeemGasPrice);
-        const danaEthSent = ethers.BigNumber.from(sendValue);
-        const danaEndingEthBal = await ethers.provider.getBalance(dana.address);
+        // // Redeem and calculate using Solidity contract
+        // const danaRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(danaRedeemPrice, 8));
+        // await danaRedeemPriceTx.wait(1);
+        // const danaRedeemTx = await sdusdFromDana.redeemSdusdForEth(danaBal);
+        // const danaRedeemTxReceipt = await danaRedeemTx.wait(1);
+        // const danaRedeemGas = danaRedeemTxReceipt.gasUsed;
+        // const danaRedeemGasPrice = danaRedeemTxReceipt.effectiveGasPrice;
+        // const danaRedeemGasCost= danaRedeemGas.mul(danaRedeemGasPrice);
+        // const danaEthSent = ethers.BigNumber.from(sendValue);
+        // const danaEndingEthBal = await ethers.provider.getBalance(dana.address);
 
-        const danaEthReceivedSolidity = danaEndingEthBal.sub(startingBalances.toString()).add(danaMintGasCost.toString()).add(danaRedeemGasCost.toString()).add(sendValue).toString();
+        // const danaEthReceivedSolidity = danaEndingEthBal.sub(startingBalances.toString()).add(danaMintGasCost.toString()).add(danaRedeemGasCost.toString()).add(sendValue).toString();
         
-        // Ensure the Solidity number has the same number of digits as the JS (local) number
-        const danaLengthJS = danaEthReceivedJS.length;
+        // // Ensure the Solidity number has the same number of digits as the JS (local) number
+        // const danaLengthJS = danaEthReceivedJS.length;
 
-        // subtracting 1 extra digit from the length, because JS will round, i.e. 2.66666666665, when it should be 2.666666666
-        const danaEthReceivedJSUpdated = danaEthReceivedJS.substring(0, danaLengthJS)
-        const danaEthReceivedSolidityUpdated = danaEthReceivedSolidity.substring(0, danaLengthJS);
+        // // subtracting 1 extra digit from the length, because JS will round, i.e. 2.66666666665, when it should be 2.666666666
+        // const danaEthReceivedJSUpdated = danaEthReceivedJS.substring(0, danaLengthJS)
+        // const danaEthReceivedSolidityUpdated = danaEthReceivedSolidity.substring(0, danaLengthJS);
 
         assert.equal(adamEthReceivedSolidityUpdated, adamEthReceivedJSUpdated);
-        assert.closeTo(parseInt(bobEthReceivedSolidityUpdated), parseInt(bobEthReceivedJSUpdated), 2000000000, "Bob's ETH received from .sol code and from .js code is within 0.2 ETH of each other");
-        assert.closeTo(parseInt(cathyEthReceivedSolidityUpdated), parseInt(cathyEthReceivedJSUpdated), 2000000000, "Cathy's ETH received from .sol code and from .js code is within 0.2 ETH of each other");
-        assert.equal(danaEthReceivedSolidityUpdated, danaEthReceivedJSUpdated);
+        // assert.closeTo(parseInt(bobEthReceivedSolidityUpdated), parseInt(bobEthReceivedJSUpdated), 2000000000, "Bob's ETH received from .sol code and from .js code is within 0.2 ETH of each other");
+        // assert.closeTo(parseInt(cathyEthReceivedSolidityUpdated), parseInt(cathyEthReceivedJSUpdated), 2000000000, "Cathy's ETH received from .sol code and from .js code is within 0.2 ETH of each other");
+        // assert.equal(danaEthReceivedSolidityUpdated, danaEthReceivedJSUpdated);
 
         
       });

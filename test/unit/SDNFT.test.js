@@ -112,7 +112,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         await expect(sdnftFromAdam.buyNft({ value: sendValue })).to.emit(sdnftFromAdam, "Transfer").withArgs(ethers.constants.AddressZero, adam.address, 0);
 			});
 
-      it.only("Retrieves the NFT art", async() => {
+      it("Retrieves the NFT art", async() => {
         await sdnftFromAdam.buyNft({ value: sendValue });
 
         const response1 = await sdnftFromAdam.tokenURI(0);

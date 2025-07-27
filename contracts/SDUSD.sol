@@ -6,6 +6,8 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "hardhat/console.sol";
+
 
 
 // import sister contracts
@@ -18,6 +20,8 @@ error SDUSD__WithdrawalAmountLargerThanUserBalance();
 error SDUSD__RedemptionRateCalculationFailed();
 error SDUSD__NoSolutionForR();
 error SDUSD__OutOfRange();
+
+// event Test(int256 redemptionRate, int256 weiAmt, int256 endingCollateralRatio, int256 quadraticAAmt);
 
 contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
@@ -148,9 +152,10 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
      * However, instead of doing the simpler: ((ethPrice) * address(this).balance) / totalSupply() <- startingCollateralRatio
      * We do the slightly more complex endingCollateralRatio, because if the startingCollateralRatio < degredationThreshold, we can use this number without having to do almost the exact same calculation
      * This is a design choice but in the long run would result in lower gas if the collateral ratio falls below the degredation threshold
-     * Finally, we divide the denomenator by 1e20 (instead of 1e18) because it will make the denomenator have 2 fewer digits, which in turn enables s_degredationThreshold to have 3 digits instead of 1
+     * Finally, we divide the denomenator by 100 because it will make the denomenator have 2 fewer digits, which in turn enables s_degredationThreshold to have 3 digits instead of 1
      */
-    int256 endingCollateralRatio = ((ethPrice * balance / 1e36) - (amount / 1e18)) / ((totalSupply - amount) / 1e20);
+
+    int256 endingCollateralRatio = ((ethPrice * balance / 1e18) - (amount)) / ((totalSupply - amount) / 100);
 
     // if collateralRatio is above degredationThreshold, redemption can be 1:1
     if (endingCollateralRatio >= degredationThreshold) {
@@ -170,11 +175,12 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
     // C: (-p * b)
 
     // We'll define A separately, since it is a little complex
-    int256 quadraticA = (degredationThreshold * (totalSupply - amount)) / 1e20;
+    // We divide by 100 because the degredation threshold is a 3-digit number like 150, but it represents a ratio number with two decimal places (1.50)
+    // We have to do this because Solidity does not use decimals
+    int256 quadraticA = (degredationThreshold * (totalSupply - amount)) / 100; // 1.5e21
 
     // We'll define the B^2 - 4AC value separately, since the number needs to be input into a separate sqrt function
-    int256 quadraticSqrtValueBefore = (amount * amount / 1e36) - (4 * quadraticA * ((-ethPrice * balance) / 1e36));
-    // 6129868
+    int256 quadraticSqrtValueBefore = ((amount * amount / 1e18) - (4 * quadraticA * ((-ethPrice * balance) / 1e36))) / 1e18; // 24160000
 
     // Sanity check: sqrt value is negative, meaning it has no real solution. This should never fire.
     if (quadraticSqrtValueBefore < 0) {
@@ -187,13 +193,14 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
     int256 quadraticSqrtValueAfter = int256(sqrtResponse * 1e18);
 
-    // return quadraticSqrtValueAfter;
-    
     // The quadratic equation uses ±, so we could calculate the equation twice, once using the + and once using the -
     // NOTE: However, the + version will always be positive and the - version will always be negative, making the two caluclations redundant
     // Therefore, we will do only the + calculation
-    // Finally, we want the redemption rate to go to the ten-thousandth of a percent. Therefore we multiply the denominator not by 1e18, but by 1e14, so that we get a four-digit number and therefore four decimal points
-    int256 redemptionRate = (-amount + quadraticSqrtValueAfter) / (2 * quadraticA * 1e14);
+    // Finally, we want the redemption rate to go to the ten-thousandth of a percent. Therefore we multiply the numerator by 1e4, so that we get a four-digit number and therefore four decimal points
+    int256 redemptionRate = (-amount + quadraticSqrtValueAfter) * 1e4 / (2 * quadraticA); // 9716 (97.16%)
+
+    // int256 weiAmt = (amount * redemptionRate * 1e14) / ethPrice;
+    // emit Test(redemptionRate, weiAmt, quadraticSqrtValueAfter, quadraticA);
 
     // Sanity check. This should never fire.
     if (redemptionRate <= 0) {
