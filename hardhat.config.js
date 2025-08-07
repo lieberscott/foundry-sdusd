@@ -1,11 +1,13 @@
 require("hardhat-deploy");
 require("@nomiclabs/hardhat-ethers");
 
-require("@nomiclabs/hardhat-waffle")
-require("hardhat-gas-reporter")
-require("@nomiclabs/hardhat-etherscan")
-require("dotenv").config()
-require("solidity-coverage")
+require("@nomiclabs/hardhat-waffle");
+require("hardhat-gas-reporter");
+require("@nomiclabs/hardhat-etherscan");
+require("dotenv").config();
+require("solidity-coverage");
+const path = require("path");
+require("hardhat-dependency-compiler");
 
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
@@ -93,5 +95,5 @@ module.exports = {
   },
   mocha: {
     timeout: 500000,
-  },
+  }
 }

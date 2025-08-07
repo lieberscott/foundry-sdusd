@@ -713,19 +713,19 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         // Minting ETH prices for each person
         const adamPrice = "2000";
-        const bobPrice = "1000";
-        const cathyPrice = "1500";
-        const danaPrice = "3000";
+        const bobPrice = "2000";
+        const cathyPrice = "2000";
+        const danaPrice = "2000";
 
-        // Step 1: Seed contract with 16 ETH
+        // Step 1: Seed contract with 0.1 ETH
 				const transactionHash = await eric.sendTransaction({
           to: sdusdFromDeployer.address,
-          value: ethers.BigNumber.from(initialAmt).mul("3").toString() // 8 ETH
+          value: ethers.BigNumber.from(smallInitialAmt).toString() // 0.1 ETH
         });
         await transactionHash.wait(1);
 
         // Step 2: Mint ETH for each user, changing the ETH price in between
-        const adamMintTx = await sdusdFromAdam.mintSDUSD({ value: sendValue }); // 1 ETH ($2,000)
+        const adamMintTx = await sdusdFromAdam.mintSDUSD({ value: smallMintAmt }); // 0.01 ETH ($20)
         const adamMintTxReceipt = await adamMintTx.wait(1);
         const adamMintGas = adamMintTxReceipt.gasUsed;
         const adamMintGasPrice = adamMintTxReceipt.effectiveGasPrice;
@@ -733,19 +733,19 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
 
         const priceTxBob = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(bobPrice, 8));
         await priceTxBob.wait(1);
-        const bobMintTx = await sdusdFromBob.mintSDUSD({ value: sendValue }); // 1 ETH ($3,000)
+        const bobMintTx = await sdusdFromBob.mintSDUSD({ value: smallMintAmt }); // 0.1 ETH ($20)
         const bobMintTxReceipt = await bobMintTx.wait(1);
         const bobMintGas = bobMintTxReceipt.gasUsed;
         const bobMintGasPrice = bobMintTxReceipt.effectiveGasPrice;
         const bobMintGasCost = bobMintGas.mul(bobMintGasPrice);
         
-        // const priceTxCathy = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyPrice, 8));
-        // await priceTxCathy.wait(1);
-        // const cathyMintTx = await sdusdFromCathy.mintSDUSD({ value: sendValue }); // 1 ETH ($1,500)
-        // const cathyMintTxReceipt = await cathyMintTx.wait(1);
-        // const cathyMintGas = cathyMintTxReceipt.gasUsed;
-        // const cathyMintGasPrice = cathyMintTxReceipt.effectiveGasPrice;
-        // const cathyMintGasCost = cathyMintGas.mul(cathyMintGasPrice);
+        const priceTxCathy = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(cathyPrice, 8));
+        await priceTxCathy.wait(1);
+        const cathyMintTx = await sdusdFromCathy.mintSDUSD({ value: smallMintAmt }); // 0.1 ETH ($20)
+        const cathyMintTxReceipt = await cathyMintTx.wait(1);
+        const cathyMintGas = cathyMintTxReceipt.gasUsed;
+        const cathyMintGasPrice = cathyMintTxReceipt.effectiveGasPrice;
+        const cathyMintGasCost = cathyMintGas.mul(cathyMintGasPrice);
        
         // const priceTxDana = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(danaPrice, 8));
         // await priceTxDana.wait(1);
@@ -769,17 +769,19 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         // const danaBalTx = await sdusdFromDana.balanceOf(dana.address);
         // const danaBal = danaBalTx.toString();
 
-        assert.equal(adamBal, ethers.BigNumber.from(adamPrice).mul(sendValue).toString());
+        assert.equal(adamBal, ethers.BigNumber.from(adamPrice).mul(smallMintAmt).toString());
         // assert.equal(bobBal, ethers.BigNumber.from(bobPrice).mul(sendValue).toString());
         // assert.equal(cathyBal, ethers.BigNumber.from(cathyPrice).mul(sendValue).toString());
         // assert.equal(danaBal, ethers.BigNumber.from(danaPrice).mul(sendValue).toString());
 
         // Step 4: Redeem SDUSD while changing ETH price
 
-        const adamRedeemPrice = "240";
+        const adamRedeemPrice = "500";
         const bobRedeemPrice = "500";
-        const cathyRedeemPrice = "400";
-        const danaRedeemPrice = "300";
+        const cathyRedeemPrice = "500";
+        const danaRedeemPrice = "500";
+
+        const tenDollarsInSDUSD = "10000000000000000000"; // 10 followed by 18 zeros
 
         // Calculate using JS locally for Adam
         const adamTotalSupplySdusd = (await sdusdFromAdam.totalSupply()).div(sendValue).toString(); // total SDUSD supply at time this user is redeeming
@@ -787,16 +789,18 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const adamBalJS = adamBalTx.div(sendValue).toString(); // user's SDUSD balance
 
         const adamEthReceived = calculateRedemption(DEGREDATION_THRESHOLD, parseInt(adamTotalSupplySdusd), parseInt(adamBalJS), parseInt(adamRedeemPrice), parseInt(adamSdusdEthBal));
-        const adamEthReceivedJS = adamEthReceived.toString().replace(".", ""); // 26666666666666665
+        const adamEthReceivedJS = adamEthReceived.toString().replace(".", "");
 
         // Redeem and calculate using Solidity contract
         const adamRedeemPriceTx = await mockV3Aggregator.updateAnswer(ethers.utils.parseUnits(adamRedeemPrice, 8));
         await adamRedeemPriceTx.wait(1);
-        const adamRedeemTx = await sdusdFromAdam.redeemSdusdForEth(adamBal);
+        const adamRedeemTx = await sdusdFromAdam.redeemSdusdForEth(tenDollarsInSDUSD);
         const adamRedeemTxReceipt = await adamRedeemTx.wait(1);
 
-
         const event = adamRedeemTxReceipt.events.find(e => e.event === "Test");
+
+
+        // const event = adamRedeemTxReceipt.events.find(e => e.event === "Test");
 
 
         console.log("redemptionRate : ", Number(event.args.redemptionRate));
@@ -812,8 +816,7 @@ const { calculateRedemption, calculateMaxMintable } = require("../utils");
         const adamEthSent = ethers.BigNumber.from(sendValue);
         const adamEndingEthBal = await ethers.provider.getBalance(adam.address);
 
-        const adamEthReceivedSolidity = adamEndingEthBal.sub(startingBalances.toString()).add(adamMintGasCost.toString()).add(adamRedeemGasCost.toString()).add(sendValue).toString();
-        
+        const adamEthReceivedSolidity = adamEndingEthBal.sub(startingBalances.toString()).add(adamMintGasCost.toString()).add(adamRedeemGasCost.toString()).add(smallMintAmt).toString();
         // Ensure the Solidity number has the same number of digits as the JS (local) number
         const adamLengthJS = adamEthReceivedJS.length;
 

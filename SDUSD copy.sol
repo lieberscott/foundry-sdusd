@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "hardhat/console.sol";
+import { SD59x18, sd, unwrap, sqrt } from "@prb/math/src/SD59x18.sol";
+
 
 
 
@@ -21,7 +23,7 @@ error SDUSD__RedemptionRateCalculationFailed();
 error SDUSD__NoSolutionForR();
 error SDUSD__OutOfRange();
 
-// event Test(int256 redemptionRate, int256 weiAmt, int256 endingCollateralRatio, int256 quadraticAAmt);
+event Test(int256 redemptionRate, int256 weiAmt, int256 endingCollateralRatio, int256 quadraticAAmt);
 
 contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
@@ -110,7 +112,8 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
   // returns amountUserGetsInWei
   // _amount is amount of sdusd being redeemed
-  function calculateRedemption(uint256 _amount) public view returns (int256) {
+  // **** Make this a view function again **** public view returns (int256)
+  function calculateRedemption(uint256 _amount) public returns (int256) {
 
     // Get current ETH price
     uint256 _ethPrice = getPrice();
@@ -187,15 +190,19 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
       revert SDUSD__NoSolutionForR();
     }
 
-    uint256 quadraticSqrtValueBefore_new = uint256(quadraticSqrtValueBefore);
+    // uint256 quadraticSqrtValueBefore_new = uint256(quadraticSqrtValueBefore);
+
+    SD59x18 quadraticSqrtValueBefore_sd = sd(quadraticSqrtValueBefore * 1e18); // Wrap a raw int256 into SD59x18
+    SD59x18 sqrtResponse = sqrt(quadraticSqrtValueBefore_sd);   // Perform sqrt
+    int256 quadraticSqrtValueAfter = unwrap(sqrtResponse); // convert back into int256
     
-    uint256 sqrtResponse = sqrt(quadraticSqrtValueBefore_new);
+    // uint256 sqrtResponse = sqrt(quadraticSqrtValueBefore_new);
 
     // This is where slight mathematical problems come in, because there's no decimal notation in Solidity.
     // Sqrt(19600) is 139.642, but Solidity code returns it as 140
     // Therefore, there will be some slight differences between what the redemption rate should be and what the redemption rate will be
-    // For example, 86.42% in real world, vs. 86.66% in Solidity
-    int256 quadraticSqrtValueAfter = int256(sqrtResponse * 1e18);
+    // For example, 86.42% in actuality will be 86.66% in Solidity
+    // int256 quadraticSqrtValueAfter = int256(sqrtResponse * 1e18);
 
     // The quadratic equation uses ±, so we could calculate the equation twice, once using the + and once using the -
     // NOTE: However, the + version will always be positive and the - version will always be negative, making the two caluclations redundant
@@ -203,8 +210,8 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
     // Finally, we want the redemption rate to go to the ten-thousandth of a percent. Therefore we multiply the numerator by 1e4, so that we get a four-digit number and therefore four decimal points
     int256 redemptionRate = (-amount + quadraticSqrtValueAfter) * 1e4 / (2 * quadraticA); // 9716 (97.16%)
 
-    // int256 weiAmt = (amount * redemptionRate * 1e14) / ethPrice;
-    // emit Test(redemptionRate, weiAmt, quadraticSqrtValueAfter, quadraticA);
+    int256 weiAmt = (amount * redemptionRate * 1e14) / ethPrice;
+    emit Test(redemptionRate, weiAmt, quadraticSqrtValueAfter, quadraticSqrtValueBefore);
 
     // Sanity check. This should never fire.
     if (redemptionRate <= 0) {
@@ -273,18 +280,18 @@ contract SDUSD is ERC20, ERC20Permit, ERC20Votes, ReentrancyGuard, Ownable {
 
   // calculate the sqrt for the calculateRedemption function
   // taken from Uniswap v2 code base: https://github.com/Uniswap/v2-core/blob/master/contracts/libraries/Math.sol
-  function sqrt(uint y) internal pure returns (uint z) {
-    if (y > 3) {
-      z = y;
-      uint x = y / 2 + 1;
-      while (x < z) {
-        z = x;
-        x = (y / x + x) / 2;
-      }
-    } else if (y != 0) {
-      z = 1;
-    }
-  }
+  // function sqrt(uint y) internal pure returns (uint z) {
+  //   if (y > 3) {
+  //     z = y;
+  //     uint x = y / 2 + 1;
+  //     while (x < z) {
+  //       z = x;
+  //       x = (y / x + x) / 2;
+  //     }
+  //   } else if (y != 0) {
+  //     z = 1;
+  //   }
+  // }
 
 
   /** The following functions can change the value of the formulas
